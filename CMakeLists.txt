@@ -1,0 +1,23 @@
+cmake_minimum_required(VERSION 3.13)
+project(tetra_demodulator)
+
+if (MSVC)
+    set(CMAKE_CXX_FLAGS "-O2 /std:c++17 /EHsc")
+elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    set(CMAKE_CXX_FLAGS "-O3 -std=c++17 -Wno-unused-command-line-argument -undefined dynamic_lookup")
+else ()
+    set(CMAKE_CXX_FLAGS "-O3 -std=c++17")
+endif ()
+
+file(GLOB_RECURSE SRC "src/*.cpp" "src/*.c")
+
+include_directories("src/")
+
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=native")
+
+add_library(tetra_demodulator SHARED ${SRC})
+target_link_libraries(tetra_demodulator PRIVATE sdrpp_core)
+set_target_properties(tetra_demodulator PROPERTIES PREFIX "")
+
+# Install directives
+install(TARGETS tetra_demodulator DESTINATION lib/sdrpp/plugins)
