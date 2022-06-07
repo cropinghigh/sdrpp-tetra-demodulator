@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.13)
 project(tetra_demodulator)
 
+set(CMAKE_INSTALL_PREFIX "/usr/")
+include(GNUInstallDirs)
+
 if (MSVC)
     set(CMAKE_CXX_FLAGS "-O2 /std:c++17 /EHsc")
 elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
@@ -11,13 +14,12 @@ endif ()
 
 file(GLOB_RECURSE SRC "src/*.cpp" "src/*.c")
 
-include_directories("src/")
-
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=native")
 
 add_library(tetra_demodulator SHARED ${SRC})
 target_link_libraries(tetra_demodulator PRIVATE sdrpp_core)
+target_include_directories(tetra_demodulator PRIVATE "src/" "/usr/include/sdrpp_core/" "/usr/include/sdrpp_core/imgui")
 set_target_properties(tetra_demodulator PROPERTIES PREFIX "")
 
 # Install directives
-install(TARGETS tetra_demodulator DESTINATION lib/sdrpp/plugins)
+install(TARGETS tetra_demodulator DESTINATION ${CMAKE_INSTALL_LIBDIR}/sdrpp/plugins)

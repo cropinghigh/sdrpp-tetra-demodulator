@@ -5,7 +5,6 @@
 #include <gui/gui.h>
 #include <signal_path/signal_path.h>
 #include <module.h>
-#include <options.h>
 
 #include <dsp/demodulator.h>
 #include <dsp/processing.h>
@@ -26,7 +25,7 @@ SDRPP_MOD_INFO {
     /* Name:            */ "tetra_demodulator",
     /* Description:     */ "Tetra demodulator for SDR++(output can be fed to tetra-rx from osmo-tetra)",
     /* Author:          */ "cropinghigh",
-    /* Version:         */ 0, 0, 1,
+    /* Version:         */ 0, 0, 2,
     /* Max instances    */ -1
 };
 
@@ -172,7 +171,7 @@ private:
     static void menuHandler(void* ctx) {
         TetraDemodulatorModule* _this = (TetraDemodulatorModule*)ctx;
 
-        float menuWidth = ImGui::GetContentRegionAvailWidth();
+        float menuWidth = ImGui::GetContentRegionAvail().x;
 
         if (_this->enabled) {
             if(ImGui::SliderFloat(CONCAT("Costas loop bandwidth##_tetrademod_costasbw_", _this->name), &_this->debugCostasBw, 0.0f, 0.05f, "%.6f")) {
@@ -275,8 +274,9 @@ private:
 };
 
 MOD_EXPORT void _INIT_() {
+    std::string root = (std::string)core::args["root"];
     json def = json({});
-    config.setPath(options::opts.root + "/tetra_demodulator_config.json");
+    config.setPath(root + "/tetra_demodulator_config.json");
     config.load(def);
     config.enableAutoSave();
 }
