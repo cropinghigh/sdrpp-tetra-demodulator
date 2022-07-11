@@ -1,27 +1,22 @@
 #pragma once
-#include <dsp/block.h>
+#include <dsp/processor.h>
 
 namespace dsp {
-    
     //block that extracts symbols from DQPSK constellation
-    class DQPSKSymbolExtractor : public generic_block<DQPSKSymbolExtractor> {
+    class DQPSKSymbolExtractor : public Processor<complex_t, uint8_t> {
+        using base_type = Processor<complex_t, uint8_t>;
     public:
         DQPSKSymbolExtractor() {}
 
-        void init(stream<complex_t>* in) {
-            _in = in;
-            generic_block<DQPSKSymbolExtractor>::registerInput(_in);
-            generic_block<DQPSKSymbolExtractor>::registerOutput(&out);
-            generic_block<DQPSKSymbolExtractor>::_block_init = true;
-        }
+        DQPSKSymbolExtractor(stream<complex_t>* in) {init(in);}
 
         int run() {
-            count = _in->read();
+            count = base_type::_in->read();
             if(count < 0) { return -1; }
 
             for(int i = 0; i < count; i++) {
 //                 complex_t sym = _in->readBuf[i];
-                complex_t sym_c = _in->readBuf[i];
+                complex_t sym_c = base_type::_in->readBuf[i];
 //                 complex_t z, sym_rot;
 //                 z.re = cosf(-FL_M_PI / 4.0f);
 //                 z.im = sinf(-FL_M_PI / 4.0f);
@@ -50,44 +45,27 @@ namespace dsp {
 //                 } else {
 //                     bits = 2;  // -pi rotation
 //                 }
-                out.writeBuf[i] = bits;
+                base_type::out.writeBuf[i] = bits;
             }
-            _in->flush();
-            if(!out.swap(count)) { return -1; }
+            base_type::_in->flush();
+            if(!base_type::out.swap(count)) { return -1; }
             return count;
         }
 
-        stream<uint8_t> out;
-
     private:
         int count;
-        stream<complex_t>* _in;
-        //stream<float>* _in;
     };
 
     //Perform differential decode(because it's Dqpsk)
-    class DifferentialDecoder : public generic_block<DifferentialDecoder> {
+    class DifferentialDecoder : public Processor<complex_t, complex_t> {
+        using base_type = Processor<complex_t, complex_t>;
     public:
         DifferentialDecoder() {}
 
-        void init(stream<complex_t>* in) {
-            _in = in;
-            generic_block<DifferentialDecoder>::registerInput(_in);
-            generic_block<DifferentialDecoder>::registerOutput(&out);
-            generic_block<DifferentialDecoder>::_block_init = true;
-        }
-
-        void setInput(stream<complex_t>* in) {
-            assert(generic_block<DifferentialDecoder>::_block_init);
-            generic_block<DifferentialDecoder>::tempStop();
-            generic_block<DifferentialDecoder>::unregisterInput(_in);
-            _in = in;
-            generic_block<DifferentialDecoder>::registerInput(_in);
-            generic_block<DifferentialDecoder>::tempStart();
-        }
+        DifferentialDecoder(stream<complex_t>* in) {init(in);}
 
         int run() {
-            count = _in->read();
+            count = base_type::_in->read();
             if(count < 0) { return -1; }
 
             for(int i = 0; i < count; i++) {
@@ -99,21 +77,19 @@ namespace dsp {
                 complex_t x, y;
                 x.re = prev_sample.re;
                 x.im = -(prev_sample.im);
-                y = _in->readBuf[i] * x;
-                prev_sample = _in->readBuf[i];
+                y = base_type::_in->readBuf[i] * x;
+                prev_sample = base_type::_in->readBuf[i];
                 y = y * rotation_coeff; //rotate constellation by -pi/4
                 //float sym = std::atan2(y.im, y.re);
                 //filter = filter * (1.0f - filter_val) + (sym - 0.0f)*filter_val;
                 //out.writeBuf[i] = dsp::complex_t {sym, 0.0f};
-                out.writeBuf[i] = y;
+                base_type::out.writeBuf[i] = y;
             }
 
-            _in->flush();
-            if(!out.swap(count)) { return -1; }
+            base_type::_in->flush();
+            if(!base_type::out.swap(count)) { return -1; }
             return count;
         }
-
-        stream<complex_t> out;
 
     private:
         int count;
@@ -121,55 +97,31 @@ namespace dsp {
          //float filter_val=0.0001;
         complex_t rotation_coeff = complex_t {cosf(-FL_M_PI / 4.0f), sinf(-FL_M_PI / 4.0f)};
         complex_t prev_sample;
-        stream<complex_t>* _in;
     };
 
     //Unpack 2bits/byte to 1, because tetra-rx needs it
-    class BitUnpacker : public generic_block<BitUnpacker> {
+    class BitUnpacker : public Processor<uint8_t, uint8_t> {
+        using base_type = Processor<uint8_t, uint8_t>;
     public:
         BitUnpacker() {}
 
         BitUnpacker(stream<uint8_t>* in) { init(in); }
 
-        void init(stream<uint8_t>* in) {
-            _in = in;
-
-            generic_block<BitUnpacker>::registerInput(_in);
-            generic_block<BitUnpacker>::registerOutput(&out);
-            generic_block<BitUnpacker>::_block_init = true;
-        }
-
-        void setInput(stream<uint8_t>* in) {
-            assert(generic_block<BitUnpacker>::_block_init);
-            std::lock_guard<std::mutex> lck(generic_block<BitUnpacker>::ctrlMtx);
-            generic_block<BitUnpacker>::tempStop();
-            generic_block<BitUnpacker>::unregisterInput(_in);
-            _in = in;
-            generic_block<BitUnpacker>::registerInput(_in);
-            generic_block<BitUnpacker>::tempStart();
-        }
-
         int run() {
-            int count = _in->read();
+            int count = base_type::_in->read();
             if (count < 0) { return -1; }
             for(int i = 0; i < count; i++) {
-                uint8_t inByte = _in->readBuf[i];
+                uint8_t inByte = base_type::_in->readBuf[i];
 
-                out.readBuf[(i * 2) + 1] = inByte & 0b01;
-                out.readBuf[(i * 2)] = (inByte & 0b10) >> 1;
+                base_type::out.readBuf[(i * 2) + 1] = inByte & 0b01;
+                base_type::out.readBuf[(i * 2)] = (inByte & 0b10) >> 1;
             }
-            _in->flush();
-            if(!out.swap(count * 2)) {
+            base_type::_in->flush();
+            if(!base_type::out.swap(count * 2)) {
                 return -1;
             }
             return count;
         }
-
-        stream<uint8_t> out;
-
-    private:
-
-        stream<uint8_t>* _in;
 
     };
     
