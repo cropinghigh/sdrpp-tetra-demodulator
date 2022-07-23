@@ -22,4 +22,4 @@ target_include_directories(tetra_demodulator PRIVATE "src/" "/usr/include/sdrpp_
 set_target_properties(tetra_demodulator PROPERTIES PREFIX "")
 
 # Install directives
-install(TARGETS tetra_demodulator DESTINATION ${CMAKE_INSTALL_LIBDIR}/sdrpp/plugins)
+install(TARGETS tetra_demodulator DESTINATION /usr/lib/sdrpp/plugins)
