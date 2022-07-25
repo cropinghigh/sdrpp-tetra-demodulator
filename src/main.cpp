@@ -50,19 +50,21 @@ public:
         config.release(created);
 
         vfo = sigpath::vfoManager.createVFO(name, ImGui::WaterfallVFO::REF_CENTER, 0, 29000, 36000, 29000, 29000, true);
-        mainDemodulator.init(vfo->output, 18000, 36000, 31, 0.35, 0.4f, debugCostasBw, (0.01*0.01) / 4, 0.01f, 0.01f);
+
+        //Clock recov coeffs
+        float recov_bandwidth = 0.09f;
+        float recov_dampningFactor = 0.71f;
+        float recov_denominator = (1.0f + 2.0*recov_dampningFactor*recov_bandwidth + recov_bandwidth*recov_bandwidth);
+        float recov_mu = (4.0f * recov_dampningFactor * recov_bandwidth) / recov_denominator;
+        float recov_omega = (4.0f * recov_bandwidth * recov_bandwidth) / recov_denominator;
+
+        mainDemodulator.init(vfo->output, 18000, 36000, 33, 0.35f, 0.1f, 0.01f, recov_omega, recov_mu, 0.005f);
         constDiagSplitter.init(&mainDemodulator.out);
         constDiagSplitter.bindStream(&constDiagStream);
         constDiagSplitter.bindStream(&demodStream);
-        constDiagReshaper.init(&constDiagStream, 1024);
+        constDiagReshaper.init(&constDiagStream, 1024, 0);
         constDiagSink.init(&constDiagReshaper.out, _constDiagSinkHandler, this);
-        diffDecoder.init(&demodStream);
-        constDiag2Splitter.init(&diffDecoder.out);
-        constDiag2Splitter.bindStream(&constDiag2Stream);
-        constDiag2Splitter.bindStream(&demod2Stream);
-        constDiag2Reshaper.init(&constDiag2Stream, 1024);
-        constDiag2Sink.init(&constDiag2Reshaper.out, _constDiag2SinkHandler, this);
-        symbolExtractor.init(&demod2Stream);
+        symbolExtractor.init(&demodStream);
         bitsUnpacker.init(&symbolExtractor.out);
         demodSink.init(&bitsUnpacker.out, _demodSinkHandler, this);
 
@@ -77,10 +79,6 @@ public:
         constDiagSplitter.start();
         constDiagReshaper.start();
         constDiagSink.start();
-        diffDecoder.start();
-        constDiag2Splitter.start();
-        constDiag2Reshaper.start();
-        constDiag2Sink.start();
         symbolExtractor.start();
         bitsUnpacker.start();
         demodSink.start();
@@ -103,10 +101,6 @@ public:
         constDiagSplitter.start();
         constDiagReshaper.start();
         constDiagSink.start();
-        diffDecoder.start();
-        constDiag2Splitter.start();
-        constDiag2Reshaper.start();
-        constDiag2Sink.start();
         symbolExtractor.start();
         bitsUnpacker.start();
         demodSink.start();
@@ -128,10 +122,6 @@ public:
         constDiagSplitter.stop();
         constDiagReshaper.stop();
         constDiagSink.stop();
-        diffDecoder.stop();
-        constDiag2Splitter.stop();
-        constDiag2Reshaper.stop();
-        constDiag2Sink.stop();
         symbolExtractor.stop();
         bitsUnpacker.stop();
         demodSink.stop();
@@ -157,11 +147,8 @@ private:
             style::beginDisabled();
         }
 
-        if(ImGui::SliderFloat(CONCAT("Costas loop bandwidth##_tetrademod_costasbw_", _this->name), &_this->debugCostasBw, 0.0f, 0.05f, "%.6f") && _this->enabled) {
-            _this->mainDemodulator.setCostasBandwidth(_this->debugCostasBw); //NOT A BUG, BUT A FEATURE!(i don't know how to automatically reduce costas loop bandwidth, when it synchronizes to the carrier)
-        }
         if (_this->fileOpen && _this->enabled) { style::beginDisabled(); }
-        if(ImGui::InputText(CONCAT("Output file path:##_tetrademod_outfile_", _this->name), _this->filePath, 2047)) {
+        if(ImGui::InputText(CONCAT("Out file:##_tetrademod_outfile_", _this->name), _this->filePath, 2047)) {
             config.acquire();
             config.conf[_this->name]["filePath"] = std::string(_this->filePath);
             config.release(true);
@@ -183,13 +170,11 @@ private:
             }
             config.conf[_this->name]["fileOpen"] = _this->fileOpen;
         }
-        ImGui::Text("Demodulated: ");
+        ImGui::Text("Signal constellation: ");
         ImGui::SetNextItemWidth(menuWidth);
         _this->constDiag.draw();
+        _this->constDiagMtx.unlock();
 
-        ImGui::Text("Diff decoded: ");
-        ImGui::SetNextItemWidth(menuWidth);
-        _this->constDiag2.draw();
         if(!_this->enabled) {
             style::endDisabled();
         }
@@ -197,22 +182,12 @@ private:
 
     static void _constDiagSinkHandler(dsp::complex_t* data, int count, void* ctx) {
         TetraDemodulatorModule* _this = (TetraDemodulatorModule*)ctx;
-
+        _this->constDiagMtx.try_lock();
         dsp::complex_t* cdBuff = _this->constDiag.acquireBuffer();
         if(count == 1024) {
             memcpy(cdBuff, data, count * sizeof(dsp::complex_t));
         }
         _this->constDiag.releaseBuffer();
-    }
-
-    static void _constDiag2SinkHandler(dsp::complex_t* data, int count, void* ctx) {
-        TetraDemodulatorModule* _this = (TetraDemodulatorModule*)ctx;
-
-        dsp::complex_t* cdBuff = _this->constDiag2.acquireBuffer();
-        if(count == 1024) {
-            memcpy(cdBuff, data, count * sizeof(dsp::complex_t));
-        }
-        _this->constDiag2.releaseBuffer();
     }
 
     static void _demodSinkHandler(uint8_t* data, int count, void* ctx) {
@@ -227,27 +202,18 @@ private:
 
     VFOManager::VFO* vfo;
 
-    dsp::demod::PSK<4> mainDemodulator;
-
-    float debugCostasBw = 0.005f;
+    dsp::PI4DQPSK mainDemodulator;
     dsp::routing::Splitter<dsp::complex_t> constDiagSplitter;
     dsp::stream<dsp::complex_t> constDiagStream;
-    dsp::buffer::Packer<dsp::complex_t> constDiagReshaper;
+    dsp::buffer::Reshaper<dsp::complex_t> constDiagReshaper;
     dsp::sink::Handler<dsp::complex_t> constDiagSink;
     ImGui::ConstellationDiagram constDiag;
+    std::mutex constDiagMtx;
 
     dsp::stream<dsp::complex_t> demodStream;
 
-    dsp::routing::Splitter<dsp::complex_t> constDiag2Splitter;
-    dsp::stream<dsp::complex_t> constDiag2Stream;
-    dsp::buffer::Packer<dsp::complex_t> constDiag2Reshaper;
-    dsp::sink::Handler<dsp::complex_t> constDiag2Sink;
-    ImGui::ConstellationDiagram constDiag2;
-
-    dsp::stream<dsp::complex_t> demod2Stream;
-
     dsp::DQPSKSymbolExtractor symbolExtractor;
-    dsp::DifferentialDecoder diffDecoder;
+    //dsp::DifferentialDecoder diffDecoder;
     dsp::BitUnpacker bitsUnpacker;
     dsp::sink::Handler<uint8_t> demodSink;
 
