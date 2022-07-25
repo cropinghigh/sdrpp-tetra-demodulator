@@ -16,8 +16,13 @@
 
 #include <gui/widgets/constellation_diagram.h>
 #include <gui/widgets/file_select.h>
+#include <gui/widgets/volume_meter.h>
+
+#define ENABLE_SYNC_DETECT
+#define ENABLE_TRAININGSEQ_DETECT
 
 #include "symbol_extractor.h"
+#include "gui_widgets.h"
 
 #define CONCAT(a, b)    ((std::string(a) + b).c_str())
 
@@ -140,7 +145,6 @@ private:
 
     static void menuHandler(void* ctx) {
         TetraDemodulatorModule* _this = (TetraDemodulatorModule*)ctx;
-
         float menuWidth = ImGui::GetContentRegionAvail().x;
 
         if(!_this->enabled) {
@@ -148,7 +152,9 @@ private:
         }
 
         if (_this->fileOpen && _this->enabled) { style::beginDisabled(); }
-        if(ImGui::InputText(CONCAT("Out file:##_tetrademod_outfile_", _this->name), _this->filePath, 2047)) {
+        ImGui::Text("Out file: ");
+        ImGui::SameLine();
+        if(ImGui::InputText(CONCAT("##_tetrademod_outfile_", _this->name), _this->filePath, 2047)) {
             config.acquire();
             config.conf[_this->name]["filePath"] = std::string(_this->filePath);
             config.release(true);
@@ -175,6 +181,20 @@ private:
         _this->constDiag.draw();
         _this->constDiagMtx.unlock();
 
+#ifdef ENABLE_SYNC_DETECT
+        float avg = 1.0f - _this->symbolExtractor.stderr;
+        ImGui::Text("Signal quality: ");
+        ImGui::SameLine();
+        ImGui::SigQualityMeter(avg, 0.5f, 1.0f);
+        ImGui::Text("Sync ");
+        ImGui::SameLine();
+        ImGui::BoxIndicator(_this->symbolExtractor.sync ? IM_COL32(5, 230, 5, 255) : IM_COL32(230, 5, 5, 255));
+#endif
+#ifdef ENABLE_TRAININGSEQ_DETECT
+        ImGui::Text("Training sequences ");
+        ImGui::SameLine();
+        ImGui::BoxIndicator(_this->tsfound ? IM_COL32(5, 230, 5, 255) : IM_COL32(230, 5, 5, 255));
+#endif
         if(!_this->enabled) {
             style::endDisabled();
         }
@@ -195,6 +215,32 @@ private:
         if(_this->outfile.is_open()) {
             _this->outfile.write((char*)data, count * sizeof(uint8_t));
         }
+#ifdef ENABLE_TRAININGSEQ_DETECT
+        for(int j = 0; j < count; j++) {
+            for(int i = 0; i < 44; i++) {
+                _this->tsfind_buffer[i] = _this->tsfind_buffer[i+1];
+            }
+            _this->tsfind_buffer[44] = data[j];
+            if(!memcmp(_this->tsfind_buffer, training_seq_n, sizeof(training_seq_n)) ||
+                !memcmp(_this->tsfind_buffer, training_seq_p, sizeof(training_seq_p)) ||
+                !memcmp(_this->tsfind_buffer, training_seq_q, sizeof(training_seq_q)) ||
+                !memcmp(_this->tsfind_buffer, training_seq_N, sizeof(training_seq_N)) ||
+                !memcmp(_this->tsfind_buffer, training_seq_P, sizeof(training_seq_P)) ||
+                !memcmp(_this->tsfind_buffer, training_seq_x, sizeof(training_seq_x)) ||
+                !memcmp(_this->tsfind_buffer, training_seq_X, sizeof(training_seq_X)) ||
+                !memcmp(_this->tsfind_buffer, training_seq_y, sizeof(training_seq_y))
+            ) {
+                _this->tsfound = true;
+                _this->symsbeforeexpire = 2048;
+            }
+            if(_this->symsbeforeexpire > 0) {
+                _this->symsbeforeexpire--;
+                if(_this->symsbeforeexpire == 0) {
+                    _this->tsfound = false;
+                }
+            }
+        }
+#endif
     }
 
     std::string name;
@@ -213,9 +259,28 @@ private:
     dsp::stream<dsp::complex_t> demodStream;
 
     dsp::DQPSKSymbolExtractor symbolExtractor;
-    //dsp::DifferentialDecoder diffDecoder;
     dsp::BitUnpacker bitsUnpacker;
     dsp::sink::Handler<uint8_t> demodSink;
+
+#ifdef ENABLE_TRAININGSEQ_DETECT
+    //Sequences from osmo-tetra-sq5bpf source
+    /* 9.4.4.3.2 Normal Training Sequence */
+    static const constexpr uint8_t training_seq_n[22] = { 1,1, 0,1, 0,0, 0,0, 1,1, 1,0, 1,0, 0,1, 1,1, 0,1, 0,0 };
+    static const constexpr uint8_t training_seq_p[22] = { 0,1, 1,1, 1,0, 1,0, 0,1, 0,0, 0,0, 1,1, 0,1, 1,1, 1,0 };
+    static const constexpr uint8_t training_seq_q[22] = { 1,0, 1,1, 0,1, 1,1, 0,0, 0,0, 0,1, 1,0, 1,0, 1,1, 0,1 };
+    static const constexpr uint8_t training_seq_N[33] = { 1,1,1, 0,0,1, 1,0,1, 1,1,1, 0,0,0, 1,1,1, 1,0,0, 0,1,1, 1,1,0, 0,0,0, 0,0,0 };
+    static const constexpr uint8_t training_seq_P[33] = { 1,0,1, 0,1,1, 1,1,1, 1,0,1, 0,1,0, 1,0,1, 1,1,0, 0,0,1, 1,0,0, 0,1,0, 0,1,0 };
+
+    /* 9.4.4.3.3 Extended training sequence */
+    static const constexpr uint8_t training_seq_x[30] = { 1,0, 0,1, 1,1, 0,1, 0,0, 0,0, 1,1, 1,0, 1,0, 0,1, 1,1, 0,1, 0,0, 0,0, 1,1 };
+    static const constexpr uint8_t training_seq_X[45] = { 0,1,1,1,0,0,1,1,0,1,0,0,0,0,1,0,0,0,1,1,1,0,1,1,0,1,0,1,0,1,1,1,1,1,0,1,0,0,0,0,0,1,1,1,0 };
+
+    /* 9.4.4.3.4 Synchronization training sequence */
+    static const constexpr uint8_t training_seq_y[38] = { 1,1, 0,0, 0,0, 0,1, 1,0, 0,1, 1,1, 0,0, 1,1, 1,0, 1,0, 0,1, 1,1, 0,0, 0,0, 0,1, 1,0, 0,1, 1,1 };
+    uint8_t tsfind_buffer[45];
+    bool tsfound = false;
+    int symsbeforeexpire = 0;
+#endif
 
     char filePath[2048];
     bool fileOpen = false;

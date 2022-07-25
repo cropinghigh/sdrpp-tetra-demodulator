@@ -2,6 +2,9 @@
 #include <dsp/processor.h>
 
 #include <fstream>
+#include <iomanip>
+#include <sstream>
+
 #include <dsp/loop/phase_control_loop.h>
 #include <dsp/taps/windowed_sinc.h>
 #include <dsp/multirate/polyphase_bank.h>
@@ -22,6 +25,26 @@ namespace dsp {
                 complex_t sym_c = in[i];
                 bool a = sym_c.im<0;
                 bool b = sym_c.re<0;
+#ifdef ENABLE_SYNC_DETECT
+                complex_t ideal_sym = {b?-0.7071f : 0.7071f, a?-0.7071f : 0.7071f};
+                float dist = fabsf(sqrtf(((ideal_sym.re-sym_c.re)*(ideal_sym.re-sym_c.re))+((ideal_sym.im-sym_c.im)*(ideal_sym.im-sym_c.im))));
+                errorbuf[errorptr] = dist;
+                errorptr++;
+                if(errorptr >= 2048) {
+                    float xerr = 0;
+                    for(int i = 0; i < 2048; i++) {
+                        xerr+=errorbuf[i];
+                    }
+                    xerr /= 2048.0f;
+                    stderr = xerr;
+                    if(xerr >= 0.5f) {
+                        sync = false;
+                    } else {
+                        sync = true;
+                    }
+                    errorptr = 0;
+                }
+#endif
                 uint8_t sym = ((a)<<1) | (a!=b); //This mapping is required to make substraction differential decoder work properly
                 uint8_t phaseDiff = (sym - prev + 4) % 4;
                 switch(phaseDiff) { //Remap phase diffs to actual tetra symbols(swap 0b10 and 0b11)
@@ -61,8 +84,17 @@ namespace dsp {
             return outCount;
         }
 
+#ifdef ENABLE_SYNC_DETECT
+        bool sync = false;
+        float stderr = 0;
+#endif
+
     private:
         uint8_t prev = 0;
+#ifdef ENABLE_SYNC_DETECT
+        float errorbuf[2048];
+        int errorptr = 0;
+#endif
     };
 
     //Unpack 2bits/byte to 1, because tetra-rx wants it
