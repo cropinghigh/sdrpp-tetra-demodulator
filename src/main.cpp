@@ -31,7 +31,7 @@ SDRPP_MOD_INFO {
     /* Name:            */ "tetra_demodulator",
     /* Description:     */ "Tetra demodulator for SDR++(output can be fed to tetra-rx from osmo-tetra)",
     /* Author:          */ "cropinghigh",
-    /* Version:         */ 0, 0, 3,
+    /* Version:         */ 0, 0, 4,
     /* Max instances    */ -1
 };
 
