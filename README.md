@@ -8,7 +8,9 @@ Signal chain:
 VFO->Demodulator(RRC->AGC->Maximum Likelihood(y[n]y'[n]) timing recovery->Costas loop)->Constellation diagram->Symbol extractor->Differential decoder->Bits unpacker->Output file
 
 Building:
+
   0.  If you have arch-like system, just install package sdrpp-tetra-demodulator-git with all dependencies
+
   1.  Install SDR++ core headers to /usr/include/sdrpp_core/, if not installed (sdrpp-headers-git package for arch-like systems)
 
           git clone https://github.com/AlexandreRouma/SDRPlusPlus.git
@@ -34,11 +36,15 @@ Building:
       to config.json, or add it via Module manager
       
 Usage:
+
   1.  Find TETRA frequency you want to receive
+
   2.  Move demodulator VFO to the center of it
+
   3.  After some time, it will sync to the carrier and you'll see 4 constellation points(sync requires at least ~25dB of signal)
+
   4.  To use osmo-tetra-sq5bpf with it, you need:
-  
+
       Build osmo-tetra-sq5bpf itself (you can use my version with fixed compilation issues on latest GCC: https://github.com/cropinghigh/osmo-tetra-sq5bpf)
 
       Create a FIFO, if you want live decoding:
