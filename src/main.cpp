@@ -13,6 +13,7 @@
 #include <dsp/routing/splitter.h>
 #include <dsp/stream.h>
 #include <dsp/sink/handler_sink.h>
+#include "spdlog/spdlog.h"
 
 #include <gui/widgets/constellation_diagram.h>
 #include <gui/widgets/file_select.h>
