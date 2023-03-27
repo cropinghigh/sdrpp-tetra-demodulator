@@ -18,6 +18,9 @@
 #include <gui/widgets/file_select.h>
 #include <gui/widgets/volume_meter.h>
 
+#include <utils/flog.h>
+#include <utils/networking.h>
+
 #define ENABLE_SYNC_DETECT
 #define ENABLE_TRAININGSEQ_DETECT
 
@@ -44,15 +47,15 @@ public:
 
         // Load config
         config.acquire();
-        bool created = false;
-        if (!config.conf.contains(name)) {
-            config.conf[name]["filePath"] = std::string("/tmp/fifo1");
-            config.conf[name]["fileOpen"] = false;
-            created = true;
+        if (!config.conf.contains(name) || !config.conf[name].contains("hostname")) {
+            config.conf[name]["hostname"] = "localhost";
+            config.conf[name]["port"] = 8355;
+            config.conf[name]["sending"] = false;
         }
-        strcpy(filePath, std::string(config.conf[name]["filePath"]).c_str());
-        fileOpen = config.conf[name]["fileOpen"];
-        config.release(created);
+        strcpy(hostname, std::string(config.conf[name]["hostname"]).c_str());
+        port = config.conf[name]["port"];
+        bool startNow = config.conf[name]["sending"];
+        config.release(true);
 
         vfo = sigpath::vfoManager.createVFO(name, ImGui::WaterfallVFO::REF_CENTER, 0, 29000, 36000, 29000, 29000, true);
 
@@ -73,11 +76,8 @@ public:
         bitsUnpacker.init(&symbolExtractor.out);
         demodSink.init(&bitsUnpacker.out, _demodSinkHandler, this);
 
-        if(fileOpen) {
-            outfile = std::ofstream(filePath, std::ios::binary);
-            if(!outfile.is_open()) {
-                spdlog::error("Error opening file for tetra_demodulator output!");
-            }
+        if(startNow) {
+            startNetwork();
         }
 
         mainDemodulator.start();
@@ -110,15 +110,6 @@ public:
         bitsUnpacker.start();
         demodSink.start();
 
-        if(outfile.is_open()) {
-            outfile.close();
-        }
-        if(fileOpen) {
-            outfile = std::ofstream(filePath, std::ios::binary);
-            if(!outfile.is_open()) {
-                spdlog::error("Error opening file for tetra_demodulator output!");
-            }
-        }
         enabled = true;
     }
 
@@ -130,9 +121,6 @@ public:
         symbolExtractor.stop();
         bitsUnpacker.stop();
         demodSink.stop();
-        if(outfile.is_open()) {
-            outfile.close();
-        }
         sigpath::vfoManager.deleteVFO(vfo);
         enabled = false;
     }
@@ -143,6 +131,14 @@ public:
 
 private:
 
+    void startNetwork() {
+        conn = net::openUDP("0.0.0.0", port, hostname, port, false);
+    }
+
+    void stopNetwork() {
+        if (conn) { conn->close(); }
+    }
+
     static void menuHandler(void* ctx) {
         TetraDemodulatorModule* _this = (TetraDemodulatorModule*)ctx;
         float menuWidth = ImGui::GetContentRegionAvail().x;
@@ -150,32 +146,42 @@ private:
         if(!_this->enabled) {
             style::beginDisabled();
         }
-
-        if (_this->fileOpen && _this->enabled) { style::beginDisabled(); }
-        ImGui::Text("Out file: ");
-        ImGui::SameLine();
-        if(ImGui::InputText(CONCAT("##_tetrademod_outfile_", _this->name), _this->filePath, 2047)) {
+        bool netActive = (_this->conn && _this->conn->isOpen());
+        if(netActive) { style::beginDisabled(); }
+        if (ImGui::InputText(CONCAT("UDP ##_tetrademod_host_", _this->name), _this->hostname, 1023)) {
             config.acquire();
-            config.conf[_this->name]["filePath"] = std::string(_this->filePath);
+            config.conf[_this->name]["hostname"] = _this->hostname;
             config.release(true);
         }
-        if (_this->fileOpen && _this->enabled) { style::endDisabled(); }
-        if (ImGui::Checkbox(CONCAT("Write to file##_tetrademod_writefile_", _this->name), &_this->fileOpen) && _this->enabled) {
-            if(_this->fileOpen) {
-                if(_this->outfile.is_open()) {
-                    _this->outfile.close();
-                }
-                _this->outfile = std::ofstream(_this->filePath, std::ios::binary);
-                if(!_this->outfile.is_open()) {
-                    spdlog::error("Error opening file for tetra_demodulator output!");
-                }
-            } else {
-                if(_this->outfile.is_open()) {
-                    _this->outfile.close();
-                }
-            }
-            config.conf[_this->name]["fileOpen"] = _this->fileOpen;
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(menuWidth - ImGui::GetCursorPosX());
+        if (ImGui::InputInt(CONCAT("##_tetrademod_port_", _this->name), &(_this->port), 0, 0)) {
+            config.acquire();
+            config.conf[_this->name]["port"] = _this->port;
+            config.release(true);
         }
+        if(netActive) { style::endDisabled(); }
+
+        if (netActive && ImGui::Button(CONCAT("Net stop##_tetrademod_net_stop_", _this->name), ImVec2(menuWidth, 0))) {
+            _this->stopNetwork();
+            config.acquire();
+            config.conf[_this->name]["sending"] = false;
+            config.release(true);
+        } else if (!netActive && ImGui::Button(CONCAT("Net start##_tetrademod_net_stop_", _this->name), ImVec2(menuWidth, 0))) {
+            _this->startNetwork();
+            config.acquire();
+            config.conf[_this->name]["sending"] = true;
+            config.release(true);
+        }
+
+        ImGui::TextUnformatted("Net status:");
+        ImGui::SameLine();
+        if (netActive) {
+            ImGui::TextColored(ImVec4(0.0, 1.0, 0.0, 1.0), "Sending");
+        } else {
+            ImGui::TextUnformatted("Idle");
+        }
+
         ImGui::Text("Signal constellation: ");
         ImGui::SetNextItemWidth(menuWidth);
         _this->constDiag.draw();
@@ -188,12 +194,12 @@ private:
         ImGui::SigQualityMeter(avg, 0.5f, 1.0f);
         ImGui::Text("Sync ");
         ImGui::SameLine();
-        ImGui::BoxIndicator(_this->symbolExtractor.sync ? IM_COL32(5, 230, 5, 255) : IM_COL32(230, 5, 5, 255));
+        ImGui::BoxIndicator(menuWidth, _this->symbolExtractor.sync ? IM_COL32(5, 230, 5, 255) : IM_COL32(230, 5, 5, 255));
 #endif
 #ifdef ENABLE_TRAININGSEQ_DETECT
         ImGui::Text("Training sequences ");
         ImGui::SameLine();
-        ImGui::BoxIndicator(_this->tsfound ? IM_COL32(5, 230, 5, 255) : IM_COL32(230, 5, 5, 255));
+        ImGui::BoxIndicator(menuWidth, _this->tsfound ? IM_COL32(5, 230, 5, 255) : IM_COL32(230, 5, 5, 255));
 #endif
         if(!_this->enabled) {
             style::endDisabled();
@@ -212,8 +218,8 @@ private:
 
     static void _demodSinkHandler(uint8_t* data, int count, void* ctx) {
         TetraDemodulatorModule* _this = (TetraDemodulatorModule*)ctx;
-        if(_this->outfile.is_open()) {
-            _this->outfile.write((char*)data, count * sizeof(uint8_t));
+        if(_this->conn && _this->conn->isOpen()) {
+            _this->conn->write(count * sizeof(uint8_t), data);
         }
 #ifdef ENABLE_TRAININGSEQ_DETECT
         for(int j = 0; j < count; j++) {
@@ -282,9 +288,10 @@ private:
     int symsbeforeexpire = 0;
 #endif
 
-    char filePath[2048];
-    bool fileOpen = false;
-    std::ofstream outfile;
+    char hostname[1024];
+    int port = 8355;
+
+    net::Conn conn;
 
 };
 

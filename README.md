@@ -5,7 +5,7 @@ Designed to provide output to tetra-rx from osmo-tetra-sq5bpf
 
 Signal chain:
 
-VFO->Demodulator(RRC->AGC->Maximum Likelihood(y[n]y'[n]) timing recovery->Costas loop)->Constellation diagram->Symbol extractor->Differential decoder->Bits unpacker->Output file
+VFO->Demodulator(RRC->AGC->Maximum Likelihood(y[n]y'[n]) timing recovery->Costas loop)->Constellation diagram->Symbol extractor->Differential decoder->Bits unpacker->Output UDP sender
 
 Building:
 
@@ -41,23 +41,19 @@ Usage:
 
   2.  Move demodulator VFO to the center of it
 
-  3.  After some time, it will sync to the carrier and you'll see 4 constellation points(sync requires at least ~25dB of signal)
+  3.  After some time, it will sync to the carrier and you'll likely see 4 constellation points(sync requires at least ~10dB of signal)
 
   4.  To use osmo-tetra-sq5bpf with it, you need:
 
-      Build osmo-tetra-sq5bpf itself (you can use my version with fixed compilation issues on latest GCC: https://github.com/cropinghigh/osmo-tetra-sq5bpf)
+      Build osmo-tetra-sq5bpf itself (you can use my version with fixed compilation issues for latest GCC: https://github.com/cropinghigh/osmo-tetra-sq5bpf)
 
-      Create a FIFO, if you want live decoding:
+      Configure network address and port, or leave them default.
 
-          mkfifo /tmp/fifo1 (you can change path to anywhere you want)
+      Start decoder listening on the required port, for example:
 
-      Enter path of that FIFO to the demodulator
+          socat - udp-listen:8355 | ./tetra-rx -s -r -e /dev/stdin
 
-      Run tetra-rx:
-
-          tetra-rx -s -r -e /tmp/fifo1
-
-      Enable writing to the file in module
+      Start network in the module
 
       If everything was done right, you will see decoded BURSTs from tetra-rx
 

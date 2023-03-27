@@ -11,12 +11,12 @@ namespace ImGui {
         return ImVec2(a.x + b.x, a.y + b.y);
     }
 
-    void BoxIndicator(ImU32 color, const ImVec2& size_arg = ImVec2(0, 0)) {
+    void BoxIndicator(float menuWidth, ImU32 color, const ImVec2& size_arg = ImVec2(0, 0)) {
         ImGuiWindow* window = GetCurrentWindow();
         ImGuiStyle& style = GImGui->Style;
 
         ImVec2 min = window->DC.CursorPos;
-        min.x = GetContentRegionMax().x - (GImGui->FontSize);
+        min.x = menuWidth - (GImGui->FontSize);
         ImVec2 size = CalcItemSize(size_arg, (GImGui->FontSize), (GImGui->FontSize));
         ImRect bb(min, min+size);
 
