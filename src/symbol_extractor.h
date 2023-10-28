@@ -513,7 +513,7 @@ namespace dsp {
             _rrcTapCount = rrcTapCount;
             _rrcBeta = rrcBeta;
 
-            fll.init(NULL, fllBandwidth, _symbolrate, _samplerate, _rrcTapCount, _rrcBeta);
+            fll.init(NULL, fllBandwidth, _symbolrate, _samplerate, _rrcTapCount, _rrcBeta, 0, -FL_M_PI/2.0f, FL_M_PI/2.0f);
             rrcTaps = taps::rootRaisedCosine<float>(_rrcTapCount, _rrcBeta, _symbolrate, _samplerate);
             rrc.init(NULL, rrcTaps);
             agc.init(NULL, 1.0, 10e6, agcRate);
