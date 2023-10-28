@@ -22,6 +22,8 @@
 #include <utils/net.h>
 
 #define ENABLE_SYNC_DETECT
+#define SYNC_DETECT_BUF 4096
+#define SYNC_DETECT_DISPLAY 256
 #define ENABLE_TRAININGSEQ_DETECT
 
 #include "symbol_extractor.h"
@@ -30,19 +32,21 @@
 #define CONCAT(a, b)    ((std::string(a) + b).c_str())
 
 #define VFO_SAMPLERATE 36000
-#define CLOCK_RECOVERY_BW 0.09f
-#define CLOCK_RECOVERY_DAMPN_F 0.71f
-#define CLOCK_RECOVERY_REL_LIM 0.01f
-#define RRC_TAP_COUNT 33
+#define VFO_BANDWIDTH 35000
+#define CLOCK_RECOVERY_BW 0.04f
+#define CLOCK_RECOVERY_DAMPN_F 0.707f
+#define CLOCK_RECOVERY_REL_LIM 0.1f
+#define RRC_TAP_COUNT 65
 #define RRC_ALPHA 0.35f
 #define AGC_RATE 0.02f
-#define COSTAS_LOOP_BANDWIDTH 0.01f
+#define COSTAS_LOOP_BANDWIDTH 0.045f
+#define FLL_LOOP_BANDWIDTH 0.005f
 
 SDRPP_MOD_INFO {
     /* Name:            */ "tetra_demodulator",
     /* Description:     */ "Tetra demodulator for SDR++(output can be fed to tetra-rx from osmo-tetra)",
     /* Author:          */ "cropinghigh",
-    /* Version:         */ 0, 0, 4,
+    /* Version:         */ 0, 0, 6,
     /* Max instances    */ -1
 };
 
@@ -65,7 +69,7 @@ public:
         bool startNow = config.conf[name]["sending"];
         config.release(true);
 
-        vfo = sigpath::vfoManager.createVFO(name, ImGui::WaterfallVFO::REF_CENTER, 0, 29000, VFO_SAMPLERATE, 29000, 29000, true);
+        vfo = sigpath::vfoManager.createVFO(name, ImGui::WaterfallVFO::REF_CENTER, 0, VFO_BANDWIDTH, VFO_SAMPLERATE, VFO_BANDWIDTH, VFO_BANDWIDTH, true);
 
         //Clock recov coeffs
         float recov_bandwidth = CLOCK_RECOVERY_BW;
@@ -74,7 +78,7 @@ public:
         float recov_mu = (4.0f * recov_dampningFactor * recov_bandwidth) / recov_denominator;
         float recov_omega = (4.0f * recov_bandwidth * recov_bandwidth) / recov_denominator;
 
-        mainDemodulator.init(vfo->output, 18000, VFO_SAMPLERATE, RRC_TAP_COUNT, RRC_ALPHA, AGC_RATE, COSTAS_LOOP_BANDWIDTH, recov_omega, recov_mu, CLOCK_RECOVERY_REL_LIM);
+        mainDemodulator.init(vfo->output, 18000, VFO_SAMPLERATE, RRC_TAP_COUNT, RRC_ALPHA, AGC_RATE, COSTAS_LOOP_BANDWIDTH, FLL_LOOP_BANDWIDTH, recov_omega, recov_mu, CLOCK_RECOVERY_REL_LIM);
         constDiagSplitter.init(&mainDemodulator.out);
         constDiagSplitter.bindStream(&constDiagStream);
         constDiagSplitter.bindStream(&demodStream);
@@ -198,7 +202,6 @@ private:
         ImGui::Text("Signal constellation: ");
         ImGui::SetNextItemWidth(menuWidth);
         _this->constDiag.draw();
-        _this->constDiagMtx.unlock();
 
 #ifdef ENABLE_SYNC_DETECT
         float avg = 1.0f - _this->symbolExtractor.stderr;
@@ -221,7 +224,6 @@ private:
 
     static void _constDiagSinkHandler(dsp::complex_t* data, int count, void* ctx) {
         TetraDemodulatorModule* _this = (TetraDemodulatorModule*)ctx;
-        _this->constDiagMtx.try_lock();
         dsp::complex_t* cdBuff = _this->constDiag.acquireBuffer();
         if(count == 1024) {
             memcpy(cdBuff, data, count * sizeof(dsp::complex_t));
@@ -273,7 +275,6 @@ private:
     dsp::buffer::Reshaper<dsp::complex_t> constDiagReshaper;
     dsp::sink::Handler<dsp::complex_t> constDiagSink;
     ImGui::ConstellationDiagram constDiag;
-    std::mutex constDiagMtx;
 
     dsp::stream<dsp::complex_t> demodStream;
 

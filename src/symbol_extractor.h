@@ -27,22 +27,27 @@ namespace dsp {
                 bool b = sym_c.re<0;
 #ifdef ENABLE_SYNC_DETECT
                 complex_t ideal_sym = {b?-0.7071f : 0.7071f, a?-0.7071f : 0.7071f};
-                float dist = fabsf(sqrtf(((ideal_sym.re-sym_c.re)*(ideal_sym.re-sym_c.re))+((ideal_sym.im-sym_c.im)*(ideal_sym.im-sym_c.im))));
+                // float dist = fabsf(sqrtf(((ideal_sym.re-sym_c.re)*(ideal_sym.re-sym_c.re))+((ideal_sym.im-sym_c.im)*(ideal_sym.im-sym_c.im))));
+                float dist = std::abs(ideal_sym.phase() - sym_c.phase());
                 errorbuf[errorptr] = dist;
                 errorptr++;
-                if(errorptr >= 2048) {
+                if(errorptr >= SYNC_DETECT_BUF) {
+                    errorptr = 0;
+                }
+                errordisplayptr++;
+                if(errordisplayptr >= SYNC_DETECT_DISPLAY) {
                     float xerr = 0;
-                    for(int i = 0; i < 2048; i++) {
+                    for(int i = 0; i < SYNC_DETECT_BUF; i++) {
                         xerr+=errorbuf[i];
                     }
-                    xerr /= 2048.0f;
+                    xerr /= (float)SYNC_DETECT_BUF;
                     stderr = xerr;
-                    if(xerr >= 0.5f) {
+                    if(xerr >= 0.35f) {
                         sync = false;
                     } else {
                         sync = true;
                     }
-                    errorptr = 0;
+                    errordisplayptr = 0;
                 }
 #endif
                 uint8_t sym = ((a)<<1) | (a!=b); //This mapping is required to make substraction differential decoder work properly
@@ -92,8 +97,9 @@ namespace dsp {
     private:
         uint8_t prev = 0;
 #ifdef ENABLE_SYNC_DETECT
-        float errorbuf[2048];
+        float errorbuf[SYNC_DETECT_BUF];
         int errorptr = 0;
+        int errordisplayptr = 0;
 #endif
     };
 
@@ -156,7 +162,7 @@ namespace dsp {
                 generateInterpTaps();
                 buffer = buffer::alloc<complex_t>(STREAM_BUFFER_SIZE + _interpTapCount);
                 bufStart = &buffer[_interpTapCount - 1];
-            
+
                 base_type::init(in);
             }
 
@@ -313,12 +319,153 @@ namespace dsp {
     }
 
     namespace loop {
+
+        class FLL : public Processor<complex_t, complex_t>  {
+            using base_type = Processor<complex_t, complex_t>;
+        public:
+            FLL() {}
+
+            FLL(stream<complex_t>* in, double bandwidth, int sym_rate, int samp_rate, int filt_size, float filt_a, double initFreq = 0.0, double minFreq = -FL_M_PI, double maxFreq = FL_M_PI) { init(in, bandwidth, sym_rate, samp_rate, filt_size, filt_a, initFreq, minFreq, maxFreq); }
+
+            void init(stream<complex_t>* in, double bandwidth, int sym_rate, int samp_rate, int filt_size, float filt_a, double initFreq = 0.0, double minFreq = -FL_M_PI, double maxFreq = FL_M_PI) {
+                _initFreq = initFreq;
+                _symbolrate = sym_rate;
+                _samplerate = samp_rate;
+                _filt_size = filt_size;
+                _filt_a = filt_a;
+
+                //Create band-edge and normal filters
+                createBandedgeFilters();
+                lbandedgerrc.init(NULL, lbandedgerrcTaps);
+                hbandedgerrc.init(NULL, hbandedgerrcTaps);
+
+                // Init phase control loop
+                float alpha, beta;
+                PhaseControlLoop<float>::criticallyDamped(bandwidth, alpha, beta);
+                alpha = 0; //we don't need to track phase in FLL
+                pcl.init(alpha, beta, 0, -FL_M_PI, FL_M_PI, initFreq, minFreq, maxFreq);
+                base_type::init(in);
+            }
+
+            //STOLEN FROM GNURADIO!
+            void createBandedgeFilters() {
+                int sps = _samplerate / _symbolrate;
+                const int M = (_filt_size / sps);
+                float power = 0;
+
+                // Create the baseband filter by adding two sincs together
+                std::vector<float> bb_taps;
+                for (int i = 0; i < _filt_size; i++) {
+                    float k = -M + i * 2.0f / sps;
+                    float tap = math::sinc(_filt_a * k - 0.5f) + math::sinc(_filt_a * k + 0.5f);
+                    power += tap;
+
+                    bb_taps.push_back(tap);
+                }
+
+                lbandedgerrcTaps = taps::alloc<complex_t>(_filt_size);
+                hbandedgerrcTaps = taps::alloc<complex_t>(_filt_size);
+
+                // Create the band edge filters by spinning the baseband
+                // filter up and down to the right places in frequency.
+                // Also, normalize the power in the filters
+                int N = (bb_taps.size() - 1.0f) / 2.0f;
+                for (int i = 0; i < _filt_size; i++) {
+                    float tap = bb_taps[i] / power;
+
+                    float k = (-N + (int)i) / (2.0f * sps);
+
+                    complex_t t1 = math::phasor(-2.0f * FL_M_PI * (1.0f + _filt_a) * k) * tap;
+                    complex_t t2 = math::phasor( 2.0f * FL_M_PI * (1.0f + _filt_a) * k) * tap;
+
+                    lbandedgerrcTaps.taps[_filt_size - i - 1] = t1;
+                    hbandedgerrcTaps.taps[_filt_size - i - 1] = t2;
+                }
+            }
+
+            void setBandwidth(double bandwidth) {
+                assert(base_type::_block_init);
+                std::lock_guard<std::recursive_mutex> lck(base_type::ctrlMtx);
+                base_type::tempStop();
+                float alpha, beta;
+                PhaseControlLoop<float>::criticallyDamped(bandwidth, alpha, beta);
+                alpha = 0; //we don't need to track phase in FLL
+                pcl.setCoefficients(alpha, beta);
+                base_type::tempStart();
+            }
+
+            void setInitialFreq(double initFreq) {
+                assert(base_type::_block_init);
+                std::lock_guard<std::recursive_mutex> lck(base_type::ctrlMtx);
+                _initFreq = initFreq;
+            }
+
+            void setFrequencyLimits(double minFreq, double maxFreq) {
+                assert(base_type::_block_init);
+                std::lock_guard<std::recursive_mutex> lck(base_type::ctrlMtx);
+                pcl.setFreqLimits(minFreq, maxFreq);
+            }
+
+            void reset() {
+                assert(base_type::_block_init);
+                std::lock_guard<std::recursive_mutex> lck(base_type::ctrlMtx);
+                base_type::tempStop();
+                pcl.phase = 0;
+                pcl.freq = _initFreq;
+                base_type::tempStart();
+            }
+
+            float dbg_last_err = 0;
+
+            virtual inline int process(int count, complex_t* in, complex_t* out) {
+                for (int i = 0; i < count; i++) {
+                    complex_t shift = math::phasor(-pcl.phase);
+                    complex_t x = in[i] * shift;
+                    complex_t lbe_out;
+                    complex_t hbe_out;
+                    lbandedgerrc.process(1, &(x), &lbe_out);
+                    hbandedgerrc.process(1, &(x), &hbe_out);
+                    float freqError = hbe_out.fastAmplitude() - lbe_out.fastAmplitude();
+                    dbg_last_err = pcl.freq;
+                    pcl.advance(freqError);
+                    out[i] = x;
+                }
+                return count;
+            }
+
+            int run() {
+                int count = base_type::_in->read();
+                if (count < 0) { return -1; }
+
+                process(count, base_type::_in->readBuf, base_type::out.writeBuf);
+
+                base_type::_in->flush();
+                if (!base_type::out.swap(count)) { return -1; }
+                return count;
+            }
+        protected:
+            PhaseControlLoop<float> pcl;
+            tap<complex_t> lbandedgerrcTaps;
+            filter::FIR<complex_t, complex_t> lbandedgerrc;
+            tap<complex_t> hbandedgerrcTaps;
+            filter::FIR<complex_t, complex_t> hbandedgerrc;
+            float _initFreq;
+            int _symbolrate;
+            int _samplerate;
+            int _filt_size;
+            float _filt_a;
+            complex_t lastVCO = { 1.0f, 0.0f };
+        };
+
         class PI4DQPSK_COSTAS : public PLL {
             using base_type = PLL;
         public:
+
             inline int process(int count, complex_t* in, complex_t* out) {
                 for (int i = 0; i < count; i++) {
-                    complex_t x = in[i] * math::phasor(-pcl.phase);
+                    complex_t shift = math::phasor(-pcl.phase);
+                    complex_t x = in[i] * shift;
+                    //perform pi/4 shift on every symbol
                     ph2 += -FL_M_PI/4.0f;
                     if(ph2 >= 2*FL_M_PI) {
                         ph2-=2*FL_M_PI;
@@ -337,6 +484,7 @@ namespace dsp {
         protected:
             inline float errorFunction(complex_t val) {
                 float err = 0;
+                //default qpsk error function
                 err = (math::step(val.re) * val.im) - (math::step(val.im) * val.re);
                 return std::clamp<float>(err, -1.0f, 1.0f);
             }
@@ -349,8 +497,8 @@ namespace dsp {
     public:
         PI4DQPSK() {}
 
-        PI4DQPSK(stream<complex_t>* in, double symbolrate, double samplerate, int rrcTapCount, double rrcBeta, double agcRate, double costasBandwidth, double omegaGain, double muGain, double omegaRelLimit = 0.01) {
-            init(in, symbolrate, samplerate, rrcTapCount, rrcBeta, agcRate, costasBandwidth, omegaGain, muGain);
+        PI4DQPSK(stream<complex_t>* in, double symbolrate, double samplerate, int rrcTapCount, double rrcBeta, double agcRate, double costasBandwidth, double fllBandwidth, double omegaGain, double muGain, double omegaRelLimit = 0.01) {
+            init(in, symbolrate, samplerate, rrcTapCount, rrcBeta, agcRate, costasBandwidth, fllBandwidth, omegaGain, muGain);
         }
 
         ~PI4DQPSK() {
@@ -359,16 +507,17 @@ namespace dsp {
             taps::free(rrcTaps);
         }
 
-        void init(stream<complex_t>* in, double symbolrate, double samplerate, int rrcTapCount, double rrcBeta, double agcRate, double costasBandwidth, double omegaGain, double muGain, double omegaRelLimit = 0.01) {
+        void init(stream<complex_t>* in, double symbolrate, double samplerate, int rrcTapCount, double rrcBeta, double agcRate, double costasBandwidth, double fllBandwidth, double omegaGain, double muGain, double omegaRelLimit = 0.01) {
             _symbolrate = symbolrate;
             _samplerate = samplerate;
             _rrcTapCount = rrcTapCount;
             _rrcBeta = rrcBeta;
 
+            fll.init(NULL, fllBandwidth, _symbolrate, _samplerate, _rrcTapCount, _rrcBeta);
             rrcTaps = taps::rootRaisedCosine<float>(_rrcTapCount, _rrcBeta, _symbolrate, _samplerate);
             rrc.init(NULL, rrcTaps);
             agc.init(NULL, 1.0, 10e6, agcRate);
-            costas.init(NULL, costasBandwidth);
+            costas.init(NULL, costasBandwidth, 0, 0, -FL_M_PI/10.0f, FL_M_PI/10.0f); //frequency range limit here is REQUIRED!!!
             recov.init(NULL, _samplerate / _symbolrate,  omegaGain, muGain, omegaRelLimit);
 
             rrc.out.free();
@@ -435,6 +584,12 @@ namespace dsp {
             costas.setBandwidth(bandwidth);
         }
 
+        void setFllBandwidth(double fllBandwidth) {
+            assert(base_type::_block_init);
+            std::lock_guard<std::recursive_mutex> lck(base_type::ctrlMtx);
+            fll.setBandwidth(fllBandwidth);
+        }
+
         void setMMParams(double omegaGain, double muGain, double omegaRelLimit = 0.01) {
             assert(base_type::_block_init);
             std::lock_guard<std::recursive_mutex> lck(base_type::ctrlMtx);
@@ -465,6 +620,7 @@ namespace dsp {
             assert(base_type::_block_init);
             std::lock_guard<std::recursive_mutex> lck(base_type::ctrlMtx);
             base_type::tempStop();
+            fll.reset();
             rrc.reset();
             agc.reset();
             costas.reset();
@@ -474,8 +630,9 @@ namespace dsp {
 
         inline int process(int count, const complex_t* in, complex_t* out) {
             int ret = count;
-            ret = rrc.process(ret, in, out);
-            ret = agc.process(ret, out, out);
+            ret = agc.process(ret, (complex_t*) in, out);
+            ret = fll.process(ret, out, out);
+            ret = rrc.process(ret, out, out);
             ret = recov.process(ret, out, out);
             ret = costas.process(ret, out, out);
             return ret;
@@ -501,6 +658,7 @@ namespace dsp {
         int _rrcTapCount;
         double _rrcBeta;
 
+        loop::FLL fll;
         tap<float> rrcTaps;
         filter::FIR<complex_t, float> rrc;
         loop::FastAGC<complex_t> agc;

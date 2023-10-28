@@ -5,7 +5,7 @@ Designed to provide output to tetra-rx from osmo-tetra-sq5bpf
 
 Signal chain:
 
-VFO->Demodulator(RRC->AGC->Maximum Likelihood(y[n]y'[n]) timing recovery->Costas loop)->Constellation diagram->Symbol extractor->Differential decoder->Bits unpacker->Output UDP sender
+VFO->Demodulator(AGC->FLL->RRC->Maximum Likelihood(y[n]y'[n]) timing recovery->Costas loop)->Constellation diagram->Symbol extractor->Differential decoder->Bits unpacker->Output UDP sender
 
 Building:
 
