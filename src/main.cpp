@@ -12,22 +12,21 @@
 #include <dsp/buffer/packer.h>
 #include <dsp/routing/splitter.h>
 #include <dsp/stream.h>
-#include <dsp/sink/handler_sink.h>
+#include <dsp/convert/mono_to_stereo.h>
 
 #include <gui/widgets/constellation_diagram.h>
 #include <gui/widgets/file_select.h>
 #include <gui/widgets/volume_meter.h>
 
 #include <utils/flog.h>
-#include <utils/net.h>
 
 #define ENABLE_SYNC_DETECT
 #define SYNC_DETECT_BUF 4096
 #define SYNC_DETECT_DISPLAY 256
-#define ENABLE_TRAININGSEQ_DETECT
 
 #include "symbol_extractor.h"
 #include "gui_widgets.h"
+#include "osmotetra_dec.h"
 
 #define CONCAT(a, b)    ((std::string(a) + b).c_str())
 
@@ -46,28 +45,14 @@ SDRPP_MOD_INFO {
     /* Name:            */ "tetra_demodulator",
     /* Description:     */ "Tetra demodulator for SDR++(output can be fed to tetra-rx from osmo-tetra)",
     /* Author:          */ "cropinghigh",
-    /* Version:         */ 0, 0, 6,
+    /* Version:         */ 0, 0, 9,
     /* Max instances    */ -1
 };
-
-ConfigManager config;
 
 class TetraDemodulatorModule : public ModuleManager::Instance {
 public:
     TetraDemodulatorModule(std::string name) {
         this->name = name;
-
-        // Load config
-        config.acquire();
-        if (!config.conf.contains(name) || !config.conf[name].contains("hostname")) {
-            config.conf[name]["hostname"] = "localhost";
-            config.conf[name]["port"] = 8355;
-            config.conf[name]["sending"] = false;
-        }
-        strcpy(hostname, std::string(config.conf[name]["hostname"]).c_str());
-        port = config.conf[name]["port"];
-        bool startNow = config.conf[name]["sending"];
-        config.release(true);
 
         vfo = sigpath::vfoManager.createVFO(name, ImGui::WaterfallVFO::REF_CENTER, 0, VFO_BANDWIDTH, VFO_SAMPLERATE, VFO_BANDWIDTH, VFO_BANDWIDTH, true);
 
@@ -86,11 +71,15 @@ public:
         constDiagSink.init(&constDiagReshaper.out, _constDiagSinkHandler, this);
         symbolExtractor.init(&demodStream);
         bitsUnpacker.init(&symbolExtractor.out);
-        demodSink.init(&bitsUnpacker.out, _demodSinkHandler, this);
+        osmotetradecoder.init(&bitsUnpacker.out);
+        resamp.init(&osmotetradecoder.out, 8000.0, audioSampleRate);
+        outconv.init(&resamp.out);
 
-        if(startNow) {
-            startNetwork();
-        }
+        // Initialize the sink
+        srChangeHandler.ctx = this;
+        srChangeHandler.handler = sampleRateChangeHandler;
+        stream.init(&outconv.out, &srChangeHandler, audioSampleRate);
+        sigpath::sinkManager.registerStream(name, &stream);
 
         mainDemodulator.start();
         constDiagSplitter.start();
@@ -98,7 +87,10 @@ public:
         constDiagSink.start();
         symbolExtractor.start();
         bitsUnpacker.start();
-        demodSink.start();
+        osmotetradecoder.start();
+        resamp.start();
+        outconv.start();
+        stream.start();
         gui::menu.registerEntry(name, menuHandler, this, this);
     }
 
@@ -107,6 +99,7 @@ public:
             disable();
         }
         gui::menu.removeEntry(name);
+        sigpath::sinkManager.unregisterStream(name);
     }
 
     void postInit() {}
@@ -120,7 +113,10 @@ public:
         constDiagSink.start();
         symbolExtractor.start();
         bitsUnpacker.start();
-        demodSink.start();
+        osmotetradecoder.start();
+        resamp.start();
+        outconv.start();
+        stream.start();
 
         enabled = true;
     }
@@ -132,7 +128,10 @@ public:
         constDiagSink.stop();
         symbolExtractor.stop();
         bitsUnpacker.stop();
-        demodSink.stop();
+        osmotetradecoder.stop();
+        resamp.stop();
+        outconv.stop();
+        stream.stop();
         sigpath::vfoManager.deleteVFO(vfo);
         enabled = false;
     }
@@ -143,60 +142,12 @@ public:
 
 private:
 
-    void startNetwork() {
-        stopNetwork();
-        try {
-            conn = net::openudp(hostname, port);
-        } catch (std::runtime_error& e) {
-            flog::error("Network error: %s\n", e.what());
-        }
-    }
-
-    void stopNetwork() {
-        if (conn) { conn->close(); }
-    }
-
     static void menuHandler(void* ctx) {
         TetraDemodulatorModule* _this = (TetraDemodulatorModule*)ctx;
         float menuWidth = ImGui::GetContentRegionAvail().x;
 
         if(!_this->enabled) {
             style::beginDisabled();
-        }
-        bool netActive = (_this->conn && _this->conn->isOpen());
-        if(netActive) { style::beginDisabled(); }
-        if (ImGui::InputText(CONCAT("UDP ##_tetrademod_host_", _this->name), _this->hostname, 1023)) {
-            config.acquire();
-            config.conf[_this->name]["hostname"] = _this->hostname;
-            config.release(true);
-        }
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(menuWidth - ImGui::GetCursorPosX());
-        if (ImGui::InputInt(CONCAT("##_tetrademod_port_", _this->name), &(_this->port), 0, 0)) {
-            config.acquire();
-            config.conf[_this->name]["port"] = _this->port;
-            config.release(true);
-        }
-        if(netActive) { style::endDisabled(); }
-
-        if (netActive && ImGui::Button(CONCAT("Net stop##_tetrademod_net_stop_", _this->name), ImVec2(menuWidth, 0))) {
-            _this->stopNetwork();
-            config.acquire();
-            config.conf[_this->name]["sending"] = false;
-            config.release(true);
-        } else if (!netActive && ImGui::Button(CONCAT("Net start##_tetrademod_net_stop_", _this->name), ImVec2(menuWidth, 0))) {
-            _this->startNetwork();
-            config.acquire();
-            config.conf[_this->name]["sending"] = true;
-            config.release(true);
-        }
-
-        ImGui::TextUnformatted("Net status:");
-        ImGui::SameLine();
-        if (netActive) {
-            ImGui::TextColored(ImVec4(0.0, 1.0, 0.0, 1.0), "Sending");
-        } else {
-            ImGui::TextUnformatted("Idle");
         }
 
         ImGui::Text("Signal constellation: ");
@@ -208,15 +159,100 @@ private:
         ImGui::Text("Signal quality: ");
         ImGui::SameLine();
         ImGui::SigQualityMeter(avg, 0.5f, 1.0f);
-        ImGui::Text("Sync ");
+        ImGui::BoxIndicator(GImGui->FontSize*2, _this->symbolExtractor.sync ? IM_COL32(5, 230, 5, 255) : IM_COL32(230, 5, 5, 255));
         ImGui::SameLine();
-        ImGui::BoxIndicator(menuWidth, _this->symbolExtractor.sync ? IM_COL32(5, 230, 5, 255) : IM_COL32(230, 5, 5, 255));
+        ImGui::Text(" Sync");
 #endif
-#ifdef ENABLE_TRAININGSEQ_DETECT
-        ImGui::Text("Training sequences ");
+        int dec_st = _this->osmotetradecoder.getRxState();
+        ImGui::BoxIndicator(GImGui->FontSize*2, (dec_st == 0) ? IM_COL32(230, 5, 5, 255) : ((dec_st == 2) ? IM_COL32(5, 230, 5, 255) : IM_COL32(230, 230, 5, 255)));
         ImGui::SameLine();
-        ImGui::BoxIndicator(menuWidth, _this->tsfound ? IM_COL32(5, 230, 5, 255) : IM_COL32(230, 5, 5, 255));
-#endif
+        ImGui::Text(" Decoder:  %s", (dec_st == 0) ? "Unlocked" : ((dec_st == 2) ? "Locked" : "Know next start"));
+        if(dec_st != 2) {
+            style::beginDisabled();
+        }
+        ImGui::Text("Hyperframe: "); ImGui::SameLine();
+        ImGui::TextColored(ImVec4(0.95, 0.95, 0.05, 1.0), "%05d", _this->osmotetradecoder.getCurrHyperframe()); ImGui::SameLine();
+        ImGui::Text(" | Multiframe: "); ImGui::SameLine();
+        ImGui::TextColored(ImVec4(0.95, 0.95, 0.05, 1.0), "%02d", _this->osmotetradecoder.getCurrMultiframe()); ImGui::SameLine();
+        ImGui::Text("| Frame: "); ImGui::SameLine();
+        ImGui::TextColored(ImVec4(0.95, 0.95, 0.05, 1.0), "%02d", _this->osmotetradecoder.getCurrFrame());
+        ImGui::Text("Timeslots: ");
+        for(int i = 0; i < 4; i++) {
+            switch(_this->osmotetradecoder.getTimeslotContent(i)) {
+                case 0:
+                    ImGui::SameLine();
+                    ImGui::TextColored(ImVec4(0.8, 0.8, 0.8, 1.0), " UL   ");
+                    break;
+                case 1:
+                    ImGui::SameLine();
+                    ImGui::TextColored(ImVec4(0.05, 0.95, 0.05, 1.0), " DATA ");
+                    break;
+                case 2:
+                    ImGui::SameLine();
+                    ImGui::TextColored(ImVec4(0.95, 0.95, 0.05, 1.0), " NDB  ");
+                    break;
+                case 3:
+                    ImGui::SameLine();
+                    ImGui::TextColored(ImVec4(0.05, 0.95, 0.95, 1.0), " SYNC ");
+                    break;
+            }
+        }
+        int crc_failed = _this->osmotetradecoder.getLastCrcFail();
+        if(crc_failed) {
+            ImGui::BoxIndicator(GImGui->FontSize*2, IM_COL32(230, 5, 5, 255));
+            ImGui::SameLine();
+            ImGui::Text(" CRC: "); ImGui::SameLine();
+            ImGui::TextColored(ImVec4(0.95, 0.05, 0.05, 1.0), "FAIL");
+            style::beginDisabled();
+        } else {
+            ImGui::BoxIndicator(GImGui->FontSize*2, IM_COL32(5, 230, 5, 255));
+            ImGui::SameLine();
+            ImGui::Text(" CRC: "); ImGui::SameLine();
+            ImGui::TextColored(ImVec4(0.05, 0.95, 0.05, 1.0), "PASS");
+        }
+        int dl_usg = _this->osmotetradecoder.getDlUsage();
+        int ul_usg = _this->osmotetradecoder.getUlUsage();
+        ImGui::Text("DL:");ImGui::SameLine();
+        ImGui::TextColored(ImVec4(0.95, 0.95, 0.05, 1.0), "%7.3f", ((float)_this->osmotetradecoder.getDlFreq()/1000000.0f));ImGui::SameLine();
+        ImGui::Text(" MHz ");ImGui::SameLine();
+        ImGui::TextColored(ImVec4(0.95, 0.95, 0.05, 1.0), (dl_usg == 0 ? "Unalloc" : (dl_usg == 1 ? "Assigned ctl" : (dl_usg == 2 ? "Common ctl" : (dl_usg == 3 ? "Reserved" : "Traffic")))));
+        ImGui::Text("UL:");ImGui::SameLine();
+        ImGui::TextColored(ImVec4(0.95, 0.95, 0.05, 1.0), "%7.3f", ((float)_this->osmotetradecoder.getUlFreq()/1000000.0f));ImGui::SameLine();
+        ImGui::Text(" MHz ");ImGui::SameLine();
+        ImGui::TextColored(ImVec4(0.95, 0.95, 0.05, 1.0), (ul_usg == 0 ? "Unalloc" : "Traffic"));
+        ImGui::Text("Access1: ");ImGui::SameLine();
+        ImGui::TextColored(ImVec4(0.95, 0.95, 0.05, 1.0), "%c", _this->osmotetradecoder.getAccess1Code());ImGui::SameLine();
+        ImGui::Text("/");ImGui::SameLine();
+        ImGui::TextColored(ImVec4(0.95, 0.95, 0.05, 1.0), "%d", _this->osmotetradecoder.getAccess1());ImGui::SameLine();
+        ImGui::Text("| Access2: ");ImGui::SameLine();
+        ImGui::TextColored(ImVec4(0.95, 0.95, 0.05, 1.0), "%c", _this->osmotetradecoder.getAccess2Code());ImGui::SameLine();
+        ImGui::Text("/");ImGui::SameLine();
+        ImGui::TextColored(ImVec4(0.95, 0.95, 0.05, 1.0), "%d", _this->osmotetradecoder.getAccess2());
+        ImGui::Text("MCC: ");ImGui::SameLine();
+        ImGui::TextColored(ImVec4(0.95, 0.95, 0.05, 1.0), "%03d", _this->osmotetradecoder.getMcc());ImGui::SameLine();
+        ImGui::Text("| MNC: ");ImGui::SameLine();
+        ImGui::TextColored(ImVec4(0.95, 0.95, 0.05, 1.0), "%03d", _this->osmotetradecoder.getMnc());ImGui::SameLine();
+        ImGui::Text("| CC: ");ImGui::SameLine();
+        ImGui::TextColored(ImVec4(0.95, 0.95, 0.05, 1.0), "0x%02x", _this->osmotetradecoder.getCc());
+        ImVec4 on_color = ImVec4(0.05, 0.95, 0.05, 1.0);
+        ImVec4 off_color = ImVec4(0.95, 0.05, 0.05, 1.0);
+        ImGui::TextColored(_this->osmotetradecoder.getAdvancedLink() ? on_color : off_color, "Adv. link  ");ImGui::SameLine();
+        ImGui::TextColored(_this->osmotetradecoder.getAirEncryption() ? on_color : off_color, "Encryption  ");ImGui::SameLine();
+        ImGui::TextColored(_this->osmotetradecoder.getSndcpData() ? on_color : off_color, "SNDCP");
+        ImGui::TextColored(_this->osmotetradecoder.getCircuitData() ? on_color : off_color, "Circuit data  ");ImGui::SameLine();
+        ImGui::TextColored(_this->osmotetradecoder.getVoiceService() ? on_color : off_color, "Voice  ");ImGui::SameLine();
+        ImGui::TextColored(_this->osmotetradecoder.getNormalMode() ? on_color : off_color, "Normal mode");
+        ImGui::TextColored(_this->osmotetradecoder.getMigrationSupported() ? on_color : off_color, "Migration  ");ImGui::SameLine();
+        ImGui::TextColored(_this->osmotetradecoder.getNeverMinimumMode() ? on_color : off_color, "Never min mode  ");ImGui::SameLine();
+        ImGui::TextColored(_this->osmotetradecoder.getPriorityCell() ? on_color : off_color, "Priority cell");
+        ImGui::TextColored(_this->osmotetradecoder.getDeregMandatory() ? on_color : off_color, "Dereg req.  ");ImGui::SameLine();
+        ImGui::TextColored(_this->osmotetradecoder.getRegMandatory() ? on_color : off_color, "Reg req.");
+        if(crc_failed) {
+            style::endDisabled();
+        }
+        if(dec_st != 2) {
+            style::endDisabled();
+        }
         if(!_this->enabled) {
             style::endDisabled();
         }
@@ -231,37 +267,12 @@ private:
         _this->constDiag.releaseBuffer();
     }
 
-    static void _demodSinkHandler(uint8_t* data, int count, void* ctx) {
+    static void sampleRateChangeHandler(float sampleRate, void* ctx) {
         TetraDemodulatorModule* _this = (TetraDemodulatorModule*)ctx;
-        if(_this->conn && _this->conn->isOpen()) {
-            _this->conn->send(data, count);
-        }
-#ifdef ENABLE_TRAININGSEQ_DETECT
-        for(int j = 0; j < count; j++) {
-            for(int i = 0; i < 44; i++) {
-                _this->tsfind_buffer[i] = _this->tsfind_buffer[i+1];
-            }
-            _this->tsfind_buffer[44] = data[j];
-            if(!memcmp(_this->tsfind_buffer, training_seq_n, sizeof(training_seq_n)) ||
-                !memcmp(_this->tsfind_buffer, training_seq_p, sizeof(training_seq_p)) ||
-                !memcmp(_this->tsfind_buffer, training_seq_q, sizeof(training_seq_q)) ||
-                !memcmp(_this->tsfind_buffer, training_seq_N, sizeof(training_seq_N)) ||
-                !memcmp(_this->tsfind_buffer, training_seq_P, sizeof(training_seq_P)) ||
-                !memcmp(_this->tsfind_buffer, training_seq_x, sizeof(training_seq_x)) ||
-                !memcmp(_this->tsfind_buffer, training_seq_X, sizeof(training_seq_X)) ||
-                !memcmp(_this->tsfind_buffer, training_seq_y, sizeof(training_seq_y))
-            ) {
-                _this->tsfound = true;
-                _this->symsbeforeexpire = 2048;
-            }
-            if(_this->symsbeforeexpire > 0) {
-                _this->symsbeforeexpire--;
-                if(_this->symsbeforeexpire == 0) {
-                    _this->tsfound = false;
-                }
-            }
-        }
-#endif
+        _this->audioSampleRate = sampleRate;
+        _this->resamp.stop();
+        _this->resamp.setOutSamplerate(_this->audioSampleRate);
+        _this->resamp.start();
     }
 
     std::string name;
@@ -281,40 +292,19 @@ private:
     dsp::DQPSKSymbolExtractor symbolExtractor;
     dsp::BitUnpacker bitsUnpacker;
     dsp::sink::Handler<uint8_t> demodSink;
+    dsp::osmotetradec osmotetradecoder;
 
-#ifdef ENABLE_TRAININGSEQ_DETECT
-    //Sequences from osmo-tetra-sq5bpf source
-    /* 9.4.4.3.2 Normal Training Sequence */
-    static const constexpr uint8_t training_seq_n[22] = { 1,1, 0,1, 0,0, 0,0, 1,1, 1,0, 1,0, 0,1, 1,1, 0,1, 0,0 };
-    static const constexpr uint8_t training_seq_p[22] = { 0,1, 1,1, 1,0, 1,0, 0,1, 0,0, 0,0, 1,1, 0,1, 1,1, 1,0 };
-    static const constexpr uint8_t training_seq_q[22] = { 1,0, 1,1, 0,1, 1,1, 0,0, 0,0, 0,1, 1,0, 1,0, 1,1, 0,1 };
-    static const constexpr uint8_t training_seq_N[33] = { 1,1,1, 0,0,1, 1,0,1, 1,1,1, 0,0,0, 1,1,1, 1,0,0, 0,1,1, 1,1,0, 0,0,0, 0,0,0 };
-    static const constexpr uint8_t training_seq_P[33] = { 1,0,1, 0,1,1, 1,1,1, 1,0,1, 0,1,0, 1,0,1, 1,1,0, 0,0,1, 1,0,0, 0,1,0, 0,1,0 };
-
-    /* 9.4.4.3.3 Extended training sequence */
-    static const constexpr uint8_t training_seq_x[30] = { 1,0, 0,1, 1,1, 0,1, 0,0, 0,0, 1,1, 1,0, 1,0, 0,1, 1,1, 0,1, 0,0, 0,0, 1,1 };
-    static const constexpr uint8_t training_seq_X[45] = { 0,1,1,1,0,0,1,1,0,1,0,0,0,0,1,0,0,0,1,1,1,0,1,1,0,1,0,1,0,1,1,1,1,1,0,1,0,0,0,0,0,1,1,1,0 };
-
-    /* 9.4.4.3.4 Synchronization training sequence */
-    static const constexpr uint8_t training_seq_y[38] = { 1,1, 0,0, 0,0, 0,1, 1,0, 0,1, 1,1, 0,0, 1,1, 1,0, 1,0, 0,1, 1,1, 0,0, 0,0, 0,1, 1,0, 0,1, 1,1 };
-    uint8_t tsfind_buffer[45];
-    bool tsfound = false;
-    int symsbeforeexpire = 0;
-#endif
-
-    char hostname[1024];
-    int port = 8355;
-
-    std::shared_ptr<net::Socket> conn;
+    EventHandler<float> srChangeHandler;
+    dsp::multirate::RationalResampler<float> resamp;
+    dsp::convert::MonoToStereo outconv;
+    SinkManager::Stream stream;
+    double audioSampleRate = 48000.0;
 
 };
 
 MOD_EXPORT void _INIT_() {
     std::string root = (std::string)core::args["root"];
     json def = json({});
-    config.setPath(root + "/tetra_demodulator_config.json");
-    config.load(def);
-    config.enableAutoSave();
 }
 
 MOD_EXPORT ModuleManager::Instance* _CREATE_INSTANCE_(std::string name) {
@@ -326,6 +316,5 @@ MOD_EXPORT void _DELETE_INSTANCE_(void* instance) {
 }
 
 MOD_EXPORT void _END_() {
-    config.disableAutoSave();
-    config.save();
+
 }

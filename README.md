@@ -1,11 +1,13 @@
 # sdrpp-tetra-demodulator
 Tetra demodulator plugin for SDR++
 
-Designed to provide output to tetra-rx from osmo-tetra-sq5bpf
+Designed to fully demodulate and decode TETRA downlink signals
+
+Thanks to osmo-tetra authors for their great library
 
 Signal chain:
 
-VFO->Demodulator(AGC->FLL->RRC->Maximum Likelihood(y[n]y'[n]) timing recovery->Costas loop)->Constellation diagram->Symbol extractor->Differential decoder->Bits unpacker->Output UDP sender
+VFO->Demodulator(AGC->FLL->RRC->Maximum Likelihood(y[n]y'[n]) timing recovery->Costas loop)->Constellation diagram->Symbol extractor->Differential decoder->Bits unpacker->Osmo-tetra decoder->Sink
 
 Building:
 
@@ -17,6 +19,13 @@ Building:
           cd "SDRPlusPlus/core/src"
           sudo mkdir -p "/usr/include/sdrpp_core"
           sudo find . -regex ".*\.\(h\|hpp\)" -exec cp --parents \{\} "/usr/include/sdrpp_core" \;
+
+      Download and patch ETSI TETRA codec(in this repository):
+
+          cd src/decoder/etsi_codec-patches
+          ./download_and_patch.sh
+
+      Install libosmocore via package manager
 
   2.  Build:
 
@@ -34,26 +43,14 @@ Building:
           }
 
       to config.json, or add it via Module manager
-      
+
 Usage:
 
   1.  Find TETRA frequency you want to receive
 
   2.  Move demodulator VFO to the center of it
 
-  3.  After some time, it will sync to the carrier and you'll likely see 4 constellation points(sync requires at least ~10dB of signal)
+  3.  After some time, it will sync to the carrier and you'll likely see 4 constellation points(sync requires at least ~20dB of signal)
 
-  4.  To use osmo-tetra-sq5bpf with it, you need:
-
-      Build osmo-tetra-sq5bpf itself (you can use my version with fixed compilation issues for latest GCC: https://github.com/cropinghigh/osmo-tetra-sq5bpf)
-
-      Configure network address and port, or leave them default.
-
-      Start decoder listening on the required port, for example:
-
-          socat - udp-listen:8355 | ./tetra-rx -s -r -e /dev/stdin
-
-      Start network in the module
-
-      If everything was done right, you will see decoded BURSTs from tetra-rx
+  4.  If the channel is unencrypted, just wait for the voice activity and listen to it!
 
