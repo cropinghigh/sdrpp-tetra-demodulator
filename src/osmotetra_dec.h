@@ -46,7 +46,7 @@ namespace dsp {
 
             Init_Decod_Tetra();
 
-            out_tmp_buff.init(4096);
+            out_tmp_buff.init(32768);
 
             base_type::init(in);
         }
@@ -185,7 +185,7 @@ namespace dsp {
             osmotetradec* _this = (osmotetradec*) ctx;
             float conv_data[STREAM_BUFFER_SIZE];
             volk_16i_s32f_convert_32f(conv_data, data, 32768.0f, count);
-            if(_this->out_tmp_buff.getWritable(false)) {
+            if(_this->out_tmp_buff.getWritable(false) >= count) {
                 _this->out_tmp_buff.write(conv_data, count);
             }
         }
