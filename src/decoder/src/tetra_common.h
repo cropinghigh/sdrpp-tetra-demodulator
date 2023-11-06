@@ -98,6 +98,8 @@ struct tetra_mac_state {
 	
 	void (*put_voice_data)(void* ctx, int count, int16_t* data);
 	void* put_voice_data_ctx;
+	int last_frame;
+	int curr_active_timeslot;
 };
 
 extern struct tetra_display_state t_display_state;

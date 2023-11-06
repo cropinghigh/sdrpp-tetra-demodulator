@@ -31,7 +31,7 @@
 #define CONCAT(a, b)    ((std::string(a) + b).c_str())
 
 #define VFO_SAMPLERATE 36000
-#define VFO_BANDWIDTH 35000
+#define VFO_BANDWIDTH 30000
 #define CLOCK_RECOVERY_BW 0.0628f
 #define CLOCK_RECOVERY_DAMPN_F 0.707f
 #define CLOCK_RECOVERY_REL_LIM 0.02f

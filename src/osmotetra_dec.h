@@ -43,6 +43,8 @@ namespace dsp {
 
             tms->put_voice_data = put_voice_data;
             tms->put_voice_data_ctx = this;
+            tms->last_frame = 0;
+            tms->curr_active_timeslot = 0;
 
             Init_Decod_Tetra();
 
@@ -146,25 +148,22 @@ namespace dsp {
         }
 
         inline int process(int count, const uint8_t* in, float* out)  {
+            int outcnt = 0;
             tetra_burst_sync_in(trs, (uint8_t*)in, count);
-            int ocnt = 0;
-            int reqos = ((count*8)/36); //input sr=36ks(???, with 18 it doesn't work), output sr=8ks
-            int reqocnt = std::min(out_tmp_buff.getReadable(false), reqos);
-            if(reqocnt < reqos) {
-                if(reqocnt) {
-                    ocnt = out_tmp_buff.read(out, reqocnt);
-                    for(;ocnt < reqos; ocnt++) {
-                        out[ocnt] = 0; //silence generator if we have not enough samples in out buffer
-                    }
-                } else {
-                    for(;ocnt < reqos; ocnt++) {
-                        out[ocnt] = 0; //silence generator
-                    }
-                }
-            } else {
-                ocnt = out_tmp_buff.read(out, reqocnt);
+            if(out_tmp_buff.getReadable(false) > 0) {
+                outcnt += out_tmp_buff.read(out, out_tmp_buff.getReadable(false));
             }
-            return ocnt;
+            outSymsCtr += outcnt;
+            inSymsCtr += count;
+            int requiredOut = inSymsCtr * 8 / 36;
+            int remainingOut = requiredOut - outSymsCtr;
+            if(remainingOut > 0) {
+                memset(&(out[outcnt]), 0, remainingOut*sizeof(float));
+                outcnt += remainingOut;
+            }
+            outSymsCtr -= (std::min(outSymsCtr, requiredOut));
+            inSymsCtr -= requiredOut * 36 / 8;
+            return outcnt;
         }
 
         int run()  {
@@ -191,6 +190,8 @@ namespace dsp {
         }
 
     private:
+        int inSymsCtr = 0;
+        int outSymsCtr = 0;
         void *tetra_tall_ctx;
         struct tetra_rx_state *trs;
         struct tetra_mac_state *tms;
