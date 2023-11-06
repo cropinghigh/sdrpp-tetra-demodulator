@@ -378,7 +378,11 @@ void tetra_burst_rx_cb(const uint8_t *burst, unsigned int len, enum tetra_train_
 		/* send two parts of the burst via TP-SAP into lower MAC */
 		tp_sap_udata_ind(TPSAP_T_BBK, 0, bbk_buf, NDB_BBK_BITS, priv);
 		tp_sap_udata_ind(TPSAP_T_SCH_F, 0, ndbf_buf, 2*NDB_BLK_BITS, priv);
-		tms->t_display_st->timeslot_content[t_phy_state.time.tn-1] = 1;
+		if(!tms->cur_burst.is_traffic) {
+			tms->t_display_st->timeslot_content[t_phy_state.time.tn-1] = 1;
+		} else {
+			tms->t_display_st->timeslot_content[t_phy_state.time.tn-1] = 4;
+		}
 		break;
 	case TETRA_TRAIN_NORM_3:
 	case TETRA_TRAIN_EXT:

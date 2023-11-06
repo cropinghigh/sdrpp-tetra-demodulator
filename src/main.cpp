@@ -181,19 +181,23 @@ private:
             switch(_this->osmotetradecoder.getTimeslotContent(i)) {
                 case 0:
                     ImGui::SameLine();
-                    ImGui::TextColored(ImVec4(0.8, 0.8, 0.8, 1.0), " UL   ");
+                    ImGui::TextColored(ImVec4(0.8, 0.8, 0.8, 1.0), "   UL  ");
                     break;
                 case 1:
                     ImGui::SameLine();
-                    ImGui::TextColored(ImVec4(0.05, 0.95, 0.05, 1.0), " DATA ");
+                    ImGui::TextColored(ImVec4(0.95, 0.05, 0.95, 1.0), " DATA  ");
                     break;
                 case 2:
                     ImGui::SameLine();
-                    ImGui::TextColored(ImVec4(0.95, 0.95, 0.05, 1.0), " NDB  ");
+                    ImGui::TextColored(ImVec4(0.95, 0.95, 0.05, 1.0), "  NDB  ");
                     break;
                 case 3:
                     ImGui::SameLine();
-                    ImGui::TextColored(ImVec4(0.05, 0.95, 0.95, 1.0), " SYNC ");
+                    ImGui::TextColored(ImVec4(0.05, 0.95, 0.95, 1.0), " SYNC  ");
+                    break;
+                case 4:
+                    ImGui::SameLine();
+                    ImGui::TextColored(ImVec4(0.05, 0.95, 0.05, 1.0), " VOICE ");
                     break;
             }
         }

@@ -74,7 +74,7 @@ namespace dsp {
         int getCurrFrame() {
             return tms->t_display_st->curr_frame;
         }
-        int getTimeslotContent(int ts) { //0-other, 1-NORM1, 2-NORM2, 3-SYNC//
+        int getTimeslotContent(int ts) { //0-other, 1-NORM1, 2-NORM2, 3-SYNC, 4-VOICE
             return tms->t_display_st->timeslot_content[ts];
         }
         int getDlUsage() {
@@ -157,7 +157,8 @@ namespace dsp {
             inSymsCtr += count;
             int requiredOut = inSymsCtr * 8 / 36;
             int remainingOut = requiredOut - outSymsCtr;
-            if(remainingOut > 0) {
+            bool decoding = (tms->t_display_st->timeslot_content[0] == 4) | (tms->t_display_st->timeslot_content[1] == 4) | (tms->t_display_st->timeslot_content[2] == 4) | (tms->t_display_st->timeslot_content[3] == 4);
+            if(remainingOut > 0 && !decoding) {
                 memset(&(out[outcnt]), 0, remainingOut*sizeof(float));
                 outcnt += remainingOut;
             }
