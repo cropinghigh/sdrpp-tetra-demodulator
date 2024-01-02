@@ -31,7 +31,9 @@
 #define CONCAT(a, b)    ((std::string(a) + b).c_str())
 
 #define VFO_SAMPLERATE 36000
-#define VFO_BANDWIDTH 30000
+#define VFO_BANDWIDTH 25000
+#define MIN_VFO_BANDWIDTH 20000
+#define MAX_VFO_BANDWIDTH 40000
 #define CLOCK_RECOVERY_BW 0.0628f
 #define CLOCK_RECOVERY_DAMPN_F 0.707f
 #define CLOCK_RECOVERY_REL_LIM 0.02f
@@ -40,6 +42,7 @@
 #define AGC_RATE 0.02f
 #define COSTAS_LOOP_BANDWIDTH 0.045f
 #define FLL_LOOP_BANDWIDTH 0.005f
+#define SNAP_INTERVAL 2500
 
 SDRPP_MOD_INFO {
     /* Name:            */ "tetra_demodulator",
@@ -54,7 +57,8 @@ public:
     TetraDemodulatorModule(std::string name) {
         this->name = name;
 
-        vfo = sigpath::vfoManager.createVFO(name, ImGui::WaterfallVFO::REF_CENTER, 0, VFO_BANDWIDTH, VFO_SAMPLERATE, VFO_BANDWIDTH, VFO_BANDWIDTH, true);
+        vfo = sigpath::vfoManager.createVFO(name, ImGui::WaterfallVFO::REF_CENTER, 0, VFO_BANDWIDTH, VFO_SAMPLERATE, MIN_VFO_BANDWIDTH, MAX_VFO_BANDWIDTH, false);
+	vfo->setSnapInterval(SNAP_INTERVAL);
 
         //Clock recov coeffs
         float recov_bandwidth = CLOCK_RECOVERY_BW;
@@ -105,7 +109,8 @@ public:
     void postInit() {}
 
     void enable() {
-        vfo = sigpath::vfoManager.createVFO(name, ImGui::WaterfallVFO::REF_CENTER, 0, 29000, 36000, 29000, 29000, true);
+        vfo = sigpath::vfoManager.createVFO(name, ImGui::WaterfallVFO::REF_CENTER, 0, VFO_BANDWIDTH, 36000, MIN_VFO_BANDWIDTH, MAX_VFO_BANDWIDTH, false);
+	vfo->setSnapInterval(SNAP_INTERVAL);
         mainDemodulator.setInput(vfo->output);
         mainDemodulator.start();
         constDiagSplitter.start();
@@ -217,11 +222,11 @@ private:
         int dl_usg = _this->osmotetradecoder.getDlUsage();
         int ul_usg = _this->osmotetradecoder.getUlUsage();
         ImGui::Text("DL:");ImGui::SameLine();
-        ImGui::TextColored(ImVec4(0.95, 0.95, 0.05, 1.0), "%7.3f", ((float)_this->osmotetradecoder.getDlFreq()/1000000.0f));ImGui::SameLine();
+        ImGui::TextColored(ImVec4(0.95, 0.95, 0.05, 1.0), "%7.4f", ((float)_this->osmotetradecoder.getDlFreq()/1000000.0f));ImGui::SameLine();
         ImGui::Text(" MHz ");ImGui::SameLine();
         ImGui::TextColored(ImVec4(0.95, 0.95, 0.05, 1.0), (dl_usg == 0 ? "Unalloc" : (dl_usg == 1 ? "Assigned ctl" : (dl_usg == 2 ? "Common ctl" : (dl_usg == 3 ? "Reserved" : "Traffic")))));
         ImGui::Text("UL:");ImGui::SameLine();
-        ImGui::TextColored(ImVec4(0.95, 0.95, 0.05, 1.0), "%7.3f", ((float)_this->osmotetradecoder.getUlFreq()/1000000.0f));ImGui::SameLine();
+        ImGui::TextColored(ImVec4(0.95, 0.95, 0.05, 1.0), "%7.4f", ((float)_this->osmotetradecoder.getUlFreq()/1000000.0f));ImGui::SameLine();
         ImGui::Text(" MHz ");ImGui::SameLine();
         ImGui::TextColored(ImVec4(0.95, 0.95, 0.05, 1.0), (ul_usg == 0 ? "Unalloc" : "Traffic"));
         ImGui::Text("Access1: ");ImGui::SameLine();
