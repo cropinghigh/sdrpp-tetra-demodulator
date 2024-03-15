@@ -32,13 +32,21 @@ namespace dsp {
         
         void init(stream<uint8_t>* in)  {
             /* Initialize tetra mac state and crypto state */
+#ifdef OTC_GLOBAL
             tms = talloc_zero(OTC_GLOBAL, struct tetra_mac_state);
+#else
+            tms = talloc_zero(tetra_tall_ctx, struct tetra_mac_state);
+#endif
             tetra_mac_state_init(tms);
             tms->tcs = talloc_zero(NULL, struct tetra_crypto_state);
             tms->t_display_st = talloc_zero(NULL, struct tetra_display_state);
             tetra_crypto_state_init(tms->tcs);
 
+#ifdef OTC_GLOBAL
             trs = talloc_zero(OTC_GLOBAL, struct tetra_rx_state);
+#else
+            trs = talloc_zero(tetra_tall_ctx, struct tetra_rx_state);
+#endif
             trs->burst_cb_priv = tms;
 
             tms->put_voice_data = put_voice_data;
@@ -193,7 +201,7 @@ namespace dsp {
     private:
         int inSymsCtr = 0;
         int outSymsCtr = 0;
-        // void *tetra_tall_ctx;
+        void *tetra_tall_ctx;
         struct tetra_rx_state *trs;
         struct tetra_mac_state *tms;
         buffer::RingBuffer<float> out_tmp_buff;
