@@ -15,6 +15,7 @@ endif ()
 file(GLOB SRC LIST_DIRECTORIES false 
     "src/*.cpp"
     "src/*.c"
+    "src/dsp/*.cpp"
     "src/decoder/src/*.cpp"
     "src/decoder/src/*.c"
     "src/decoder/src/crypto/*.cpp"
