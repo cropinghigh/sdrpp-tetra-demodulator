@@ -4,14 +4,6 @@ project(tetra_demodulator)
 set(CMAKE_INSTALL_PREFIX "/usr/")
 include(GNUInstallDirs)
 
-if (MSVC)
-    set(CMAKE_CXX_FLAGS "-O2 /std:c++17 /EHsc")
-elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    set(CMAKE_CXX_FLAGS "-O3 -std=c++17 -Wno-unused-command-line-argument -undefined dynamic_lookup")
-else ()
-    set(CMAKE_CXX_FLAGS "-O3 -std=c++17")
-endif ()
-
 file(GLOB SRC LIST_DIRECTORIES false 
     "src/*.cpp"
     "src/*.c"
@@ -38,10 +30,11 @@ file(GLOB SRC LIST_DIRECTORIES false
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=native")
 
-add_library(tetra_demodulator SHARED ${SRC})
-target_link_libraries(tetra_demodulator PRIVATE sdrpp_core osmocore)
-target_include_directories(tetra_demodulator PRIVATE "src/" "src/decoder/src" "src/decoder/codec" "/usr/include/sdrpp_core/" "/usr/include/sdrpp_core/imgui")
-set_target_properties(tetra_demodulator PROPERTIES PREFIX "")
+if (NOT SDRPP_MODULE_CMAKE)
+    set(SDRPP_MODULE_CMAKE "/usr/share/cmake/Modules/sdrpp_module.cmake")
+endif ()
 
-# Install directives
-install(TARGETS tetra_demodulator DESTINATION /usr/lib/sdrpp/plugins)
+include(${SDRPP_MODULE_CMAKE})
+
+target_link_libraries(tetra_demodulator PRIVATE osmocore)
+target_include_directories(tetra_demodulator PRIVATE "src/" "src/decoder/src" "src/decoder/codec")
