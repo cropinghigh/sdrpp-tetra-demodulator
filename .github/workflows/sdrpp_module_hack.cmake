@@ -2,6 +2,9 @@
 if (NOT SDRPP_CORE_ROOT)
     set(SDRPP_CORE_ROOT "../sdrpp_lib/SDRPlusPlus-nightly/core/src")
 endif ()
+if (NOT SDRPP_LIB_ROOT)
+    set(SDRPP_LIB_ROOT "/usr/lib")
+endif ()
 if (NOT SDRPP_MODULE_COMPILER_FLAGS)
     # Compiler flags
     if (${CMAKE_BUILD_TYPE} MATCHES "Debug")
@@ -27,7 +30,7 @@ endif ()
 
 # Created shared lib and link to core
 add_library(${PROJECT_NAME} SHARED ${SRC})
-target_link_libraries(${PROJECT_NAME} PRIVATE ../sdrpp_lib/sdrpp_core/usr/lib/libsdrpp_core.so)
+target_link_libraries(${PROJECT_NAME} PRIVATE "${SDRPP_LIB_ROOT}/libsdrpp_core.so")
 target_include_directories(${PROJECT_NAME} PRIVATE "${SDRPP_CORE_ROOT}/src/" "${SDRPP_CORE_ROOT}/src/imgui/")
 set_target_properties(${PROJECT_NAME} PROPERTIES PREFIX "")
 
