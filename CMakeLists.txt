@@ -36,5 +36,14 @@ endif ()
 
 include(${SDRPP_MODULE_CMAKE})
 
-target_link_libraries(tetra_demodulator PRIVATE osmocore)
+# target_link_libraries(tetra_demodulator PRIVATE osmocore)
+if (MSVC)
+
+else()
+    add_library(osmocore STATIC IMPORTED)
+    set_target_properties(osmocore PROPERTIES IMPORTED_LOCATION /usr/lib/x86_64-linux-gnu/libosmocore.so)
+    set_target_properties(osmocore PROPERTIES INTERFACE_INCLUDE_DIRECTORIES /usr/include/osmocom/core)
+endif()
+
+target_link_libraries(tetra_demodulator osmocore)
 target_include_directories(tetra_demodulator PRIVATE "src/" "src/decoder/src" "src/decoder/codec")
