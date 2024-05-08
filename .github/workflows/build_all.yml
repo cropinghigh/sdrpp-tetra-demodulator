@@ -23,7 +23,7 @@ jobs:
         - name: Unpack SDR++ source and core lib
           run: 'mkdir sdrpp_lib && tar -zxvf nightly.tar.gz -C sdrpp_lib && dpkg-deb -xv sdrpp_debian_sid_amd64.deb ./sdrpp_lib && cp ./.github/workflows/sdrpp_module_hack.cmake ./ && pwd && ls -lah && ls -lah sdrpp_lib'
         - name: Install dependencies
-          run: 'sudo apt-get update && sudo apt-get install libtalloc-dev libsctp-dev gnutls-dev libusb-1.0.0-dev libmnl-dev libosmocore-dev libfftw3-dev libglfw3-dev libvolk2-dev libzstd-dev'
+          run: 'sudo apt-get update && sudo apt-get install liburing-dev libpcsclite-dev libmnl-dev libtalloc-dev libsctp-dev gnutls-dev libusb-1.0.0-dev libmnl-dev libosmocore-dev libfftw3-dev libglfw3-dev libvolk2-dev libzstd-dev'
         - name: Download osmocore srcs
           run: 'git clone https://github.com/osmocom/libosmocore && cd libosmocore && autoreconf -i && ./configure'
         - name: Cmake
