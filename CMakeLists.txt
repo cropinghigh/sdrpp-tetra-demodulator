@@ -26,6 +26,7 @@ file(GLOB SRC LIST_DIRECTORIES false
     "src/decoder/codec/c-code/fexp_tet.c"
     "src/decoder/codec/c-code/fmat_tet.c"
     "src/decoder/codec/c-code/tetra_op.c"
+    "libosmocore/src/core/*.c"
     )
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=native")
@@ -37,13 +38,6 @@ endif ()
 include(${SDRPP_MODULE_CMAKE})
 
 # target_link_libraries(tetra_demodulator PRIVATE osmocore)
-if (MSVC)
 
-else()
-    add_library(osmocore_st STATIC IMPORTED)
-    set_target_properties(osmocore_st PROPERTIES IMPORTED_LOCATION /usr/lib/x86_64-linux-gnu/libosmocore.so)
-    set_target_properties(osmocore_st PROPERTIES INTERFACE_INCLUDE_DIRECTORIES /usr/include)
-endif()
-
-target_link_libraries(tetra_demodulator PRIVATE osmocore_st)
-target_include_directories(tetra_demodulator PRIVATE "src/" "src/decoder/src" "src/decoder/codec")
+# target_link_libraries(tetra_demodulator PRIVATE osmocore_st)
+target_include_directories(tetra_demodulator PRIVATE "src/" "src/decoder/src" "src/decoder/codec" "libosmocore/include")

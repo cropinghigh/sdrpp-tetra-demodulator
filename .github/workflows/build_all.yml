@@ -24,6 +24,8 @@ jobs:
           run: 'mkdir sdrpp_lib && tar -zxvf nightly.tar.gz -C sdrpp_lib && dpkg-deb -xv sdrpp_debian_sid_amd64.deb ./sdrpp_lib && cp ./.github/workflows/sdrpp_module_hack.cmake ./ && pwd && ls -lah && ls -lah sdrpp_lib'
         - name: Install dependencies
           run: 'sudo apt-get update && sudo apt-get install libosmocore libosmocore-dev libfftw3-dev libglfw3-dev libvolk2-dev libzstd-dev'
+        - name: Download osmocore srcs
+          run: 'git clone https://github.com/osmocom/libosmocore'
         - name: Cmake
           run: 'mkdir build && cd build && ls -lah .. && cmake .. -DSDRPP_CORE_ROOT="$GITHUB_WORKSPACE/sdrpp_lib/SDRPlusPlus-nightly/core" -DSDRPP_LIB_ROOT="$GITHUB_WORKSPACE/sdrpp_lib/usr/lib" -DSDRPP_MODULE_CMAKE="$GITHUB_WORKSPACE/sdrpp_module_hack.cmake"'
         - name: Download ETSI codec
