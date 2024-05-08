@@ -41,5 +41,3 @@ include(${SDRPP_MODULE_CMAKE})
 target_include_directories(tetra_demodulator PRIVATE BEFORE "libosmocore" "libosmocore/src/core" "libosmocore/include" "src/" "src/decoder/src" "src/decoder/codec" )
 
 target_link_libraries(tetra_demodulator PRIVATE talloc)
-
-# target_link_libraries(tetra_demodulator PRIVATE osmocore_st)

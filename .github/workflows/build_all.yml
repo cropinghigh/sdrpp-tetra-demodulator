@@ -29,7 +29,7 @@ jobs:
         - name: Download ETSI codec
           run: 'cd src/decoder/etsi_codec-patches && ./download_and_patch.sh'
         - name: Make
-          run: 'cd build && make -j4'
+          run: 'cd build && make -j4 && ldd tetra_demodulator.so'
         - name: Upload library
           uses: actions/upload-artifact@v4
           with:
