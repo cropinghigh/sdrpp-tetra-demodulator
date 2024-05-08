@@ -9,11 +9,17 @@ Signal chain:
 
 VFO->Demodulator(AGC->FLL->RRC->Maximum Likelihood(y[n]y'[n]) timing recovery->Costas loop)->Constellation diagram->Symbol extractor->Differential decoder->Bits unpacker->Osmo-tetra decoder->Sink
 
+Binary installing:
+
+Visit the Actions page, find latest commit build artifacts, download tetra_demodulator.so and put it to /usr/lib/sdrpp/plugins/, skipping to the step 4. Don't forget to install libtalloc!
+
 Building:
 
-  0.  If you have arch-like system, just install package sdrpp-tetra-demodulator-git with all dependencies
+  0.  If you have arch-like system, just install package sdrpp-tetra-demodulator-git with all dependencies.
 
-  1.  Install SDR++ core headers to /usr/include/sdrpp_core/, if not installed. Refer to sdrpp-headers-git AUR package PKGBUILD on instructions how to do that
+      OR 
+
+  1.  Install SDR++ core headers to /usr/include/sdrpp_core/, if not installed. Refer to https://cropinghigh.github.io/sdrpp-moduledb/headerguide.html about how to do that
 
       OR if you don't want to use my header system, add -DSDRPP_MODULE_CMAKE="/path/to/sdrpp_build_dir/sdrpp_module.cmake" to cmake launch arguments
 
@@ -22,7 +28,7 @@ Building:
           cd src/decoder/etsi_codec-patches
           ./download_and_patch.sh
 
-      Install libosmocore via package manager
+      Install libtalloc-dev/talloc via package manager
 
   2.  Build:
 
@@ -32,14 +38,7 @@ Building:
           make
           sudo make install
 
-  4.  Enable new module by adding
-
-          "Tetra demodulator": {
-            "enabled": true,
-            "module": "tetra_demodulator"
-          }
-
-      to config.json, or add it via Module manager
+  4.  Enable new module by adding it via Module manager
 
 Usage:
 
