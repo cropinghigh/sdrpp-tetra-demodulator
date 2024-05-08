@@ -1,0 +1,25 @@
+name: Build Module
+on: push
+
+env:
+    # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
+    BUILD_TYPE: Debug
+
+jobs:
+    install-headers:
+        runs-on: ubuntu-latest
+        steps:
+        - name: Get SDR++ nightly source and lib
+          uses: dsaltares/fetch-gh-release-asset@master
+          with:
+            repo: 'AlexandreRouma/SDRPlusPlus'
+            version: 'tags/nightly'
+            regex: true
+            file: "(sdrpp_debian_sid_amd64\\.deb|nightly\\.zip)"
+            token: ${{ secrets.GITHUB_TOKEN }}
+        - name: Unpack SDR++ source and core lib
+          run: mkdir sdrpp_lib && tar -zxvf nightly.zip -C sdrpp_lib && dpkg-deb -xv sdrpp_debian_sid_amd64.deb ./sdrpp_lib && cp ./.github/workflows/sdrpp_module_hack.cmake ./
+        - name: Cmake
+          run: mkdir build && cd build && cmake .. -DSDRPP_MODULE_CMAKE="../sdrpp_module_hack.cmake"
+        - name: Make
+          run: make -j4
