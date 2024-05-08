@@ -24,8 +24,10 @@ jobs:
           run: 'mkdir sdrpp_lib && tar -zxvf nightly.tar.gz -C sdrpp_lib && dpkg-deb -xv sdrpp_debian_sid_amd64.deb ./sdrpp_lib && cp ./.github/workflows/sdrpp_module_hack.cmake ./ && pwd && ls -lah && ls -lah sdrpp_lib'
         - name: Cmake
           run: 'mkdir build && cd build && ls -lah .. && cmake .. -DSDRPP_MODULE_CMAKE="$GITHUB_WORKSPACE/sdrpp_module_hack.cmake"'
+        - name: Download ETSI codec
+          run: 'cd src/decoder/etsi_codec-patches && ./download_and_patch.sh'
         - name: Make
-          run: 'make -j4'
+          run: 'cd build && make -j4'
         - name: Upload library
           uses: actions/upload-artifact@v4
           with:
