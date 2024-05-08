@@ -34,4 +34,4 @@ jobs:
           uses: actions/upload-artifact@v4
           with:
               name: tetra_demodulator
-              path: ./tetra_demodulator.so
+              path: ./build/tetra_demodulator.so
