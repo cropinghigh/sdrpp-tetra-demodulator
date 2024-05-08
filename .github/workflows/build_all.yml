@@ -24,9 +24,7 @@ jobs:
           run: 'mkdir sdrpp_lib && tar -zxvf nightly.tar.gz -C sdrpp_lib && dpkg-deb -xv sdrpp_debian_sid_amd64.deb ./sdrpp_lib && cp ./.github/workflows/sdrpp_module_hack.cmake ./ && pwd && ls -lah && ls -lah sdrpp_lib'
         - name: Download libosmocore
           working-directory: ./libosmocore
-          uses: actions/checkout@v4
-          with:
-            name: 'osmocom/libosmocore'
+          run: 'git clone git@github.com:osmocom/libosmocore.git'
         - name: Build libosmocore
           run: 'cd libosmocore && ./configure && make -j4'
         - name: Cmake
