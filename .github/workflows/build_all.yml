@@ -6,7 +6,7 @@ env:
     BUILD_TYPE: Debug
 
 jobs:
-    install-headers:
+    build_linux_latest:
         runs-on: ubuntu-latest
         steps:
         - name: Repo checkout
@@ -22,12 +22,12 @@ jobs:
             token: ${{ secrets.GITHUB_TOKEN }}
         - name: Unpack SDR++ source and core lib
           run: mkdir sdrpp_lib && tar -zxvf nightly.tar.gz -C sdrpp_lib && dpkg-deb -xv sdrpp_debian_sid_amd64.deb ./sdrpp_lib && cp ./.github/workflows/sdrpp_module_hack.cmake ./
-
-    build_a:
-        runs-on: ubuntu-latest
-        needs: install-headers
-        steps:
         - name: Cmake
           run: mkdir build && cd build && cmake .. -DSDRPP_MODULE_CMAKE="../sdrpp_module_hack.cmake"
         - name: Make
           run: make -j4
+        - name: Upload library
+          uses: actions/upload-artifact@v4
+          with:
+              name: tetra_demodulator
+              path: ./tetra_demodulator.so
