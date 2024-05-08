@@ -9,6 +9,8 @@ jobs:
     install-headers:
         runs-on: ubuntu-latest
         steps:
+        - name: Repo checkout
+          uses: actions/checkout@v4
         - name: Get SDR++ nightly source
           run: wget https://github.com/AlexandreRouma/SDRPlusPlus/archive/refs/tags/nightly.tar.gz
         - name: Get SDR++ nightly lib
