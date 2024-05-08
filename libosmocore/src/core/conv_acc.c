@@ -41,6 +41,10 @@
 	vdec_free = &osmo_conv_##simd##_vdec_free; \
 }
 
+#undef HAVE_SSSE3
+#undef HAVE_AVX2
+#undef HAVE_NEON
+
 static int init_complete = 0;
 
 __attribute__ ((visibility("hidden"))) int avx2_supported = 0;
