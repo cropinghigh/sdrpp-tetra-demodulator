@@ -23,7 +23,7 @@ jobs:
         - name: Unpack SDR++ source and core lib
           run: 'mkdir sdrpp_lib && tar -zxvf nightly.tar.gz -C sdrpp_lib && dpkg-deb -xv sdrpp_debian_sid_amd64.deb ./sdrpp_lib && cp ./.github/workflows/sdrpp_module_hack.cmake ./ && pwd && ls -lah && ls -lah sdrpp_lib'
         - name: Cmake
-          run: 'mkdir build && cd build && ls -lah .. && cmake .. -DSDRPP_MODULE_CMAKE="$Env:GITHUB_WORKSPACE/sdrpp_module_hack.cmake"'
+          run: 'mkdir build && cd build && ls -lah .. && cmake .. -DSDRPP_MODULE_CMAKE="$GITHUB_WORKSPACE/sdrpp_module_hack.cmake"'
         - name: Make
           run: 'make -j4'
         - name: Upload library
