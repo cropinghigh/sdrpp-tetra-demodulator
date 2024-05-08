@@ -42,7 +42,7 @@ if (MSVC)
 else()
     add_library(osmocore STATIC IMPORTED)
     set_target_properties(osmocore PROPERTIES IMPORTED_LOCATION /usr/lib/x86_64-linux-gnu/libosmocore.so)
-    set_target_properties(osmocore PROPERTIES INTERFACE_INCLUDE_DIRECTORIES /usr/include/osmocom/core)
+    set_target_properties(osmocore PROPERTIES INTERFACE_INCLUDE_DIRECTORIES /usr/include)
 endif()
 
 target_link_libraries(tetra_demodulator PRIVATE osmocore)
