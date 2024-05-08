@@ -12,7 +12,7 @@ jobs:
         - name: Repo checkout
           uses: actions/checkout@v4
         - name: Get SDR++ nightly source
-          run: wget https://github.com/AlexandreRouma/SDRPlusPlus/archive/refs/tags/nightly.tar.gz
+          run: wget https://github.com/AlexandreRouma/SDRPlusPlus/archive/refs/tags/nightly.tar.gz && pwd && ls -lah
         - name: Get SDR++ nightly lib
           uses: dsaltares/fetch-gh-release-asset@master
           with:
@@ -21,9 +21,9 @@ jobs:
             file: 'sdrpp_debian_sid_amd64.deb'
             token: ${{ secrets.GITHUB_TOKEN }}
         - name: Unpack SDR++ source and core lib
-          run: mkdir sdrpp_lib && tar -zxvf nightly.tar.gz -C sdrpp_lib && dpkg-deb -xv sdrpp_debian_sid_amd64.deb ./sdrpp_lib && cp ./.github/workflows/sdrpp_module_hack.cmake ./
+          run: mkdir sdrpp_lib && tar -zxvf nightly.tar.gz -C sdrpp_lib && dpkg-deb -xv sdrpp_debian_sid_amd64.deb ./sdrpp_lib && cp ./.github/workflows/sdrpp_module_hack.cmake ./ && pwd && ls -lah && ls -lah sdrpp_lib
         - name: Cmake
-          run: mkdir build && cd build && cmake .. -DSDRPP_MODULE_CMAKE="../sdrpp_module_hack.cmake"
+          run: mkdir build && cd build && ls -lah .. && cmake .. -DSDRPP_MODULE_CMAKE="../sdrpp_module_hack.cmake"
         - name: Make
           run: make -j4
         - name: Upload library

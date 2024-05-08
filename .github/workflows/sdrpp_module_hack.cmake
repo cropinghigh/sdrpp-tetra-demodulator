@@ -1,6 +1,6 @@
 # Get needed values depending on if this is in-tree or out-of-tree
 if (NOT SDRPP_CORE_ROOT)
-    set(SDRPP_CORE_ROOT "../sdrpp_lib/core/src")
+    set(SDRPP_CORE_ROOT "../sdrpp_lib/SDRPlusPlus-nightly/core/src")
 endif ()
 if (NOT SDRPP_MODULE_COMPILER_FLAGS)
     # Compiler flags
