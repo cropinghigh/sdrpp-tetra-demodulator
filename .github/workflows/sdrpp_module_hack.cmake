@@ -27,7 +27,7 @@ endif ()
 
 # Created shared lib and link to core
 add_library(${PROJECT_NAME} SHARED ${SRC})
-target_link_libraries(${PROJECT_NAME} PRIVATE ../sdrpp_lib/sdrpp_core/lib/libsdrpp_core.so)
+target_link_libraries(${PROJECT_NAME} PRIVATE ../sdrpp_lib/sdrpp_core/usr/lib/libsdrpp_core.so)
 target_include_directories(${PROJECT_NAME} PRIVATE "${SDRPP_CORE_ROOT}/src/" "${SDRPP_CORE_ROOT}/src/imgui/")
 set_target_properties(${PROJECT_NAME} PROPERTIES PREFIX "")
 
