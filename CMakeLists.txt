@@ -35,9 +35,10 @@ if (NOT SDRPP_MODULE_CMAKE)
     set(SDRPP_MODULE_CMAKE "/usr/share/cmake/Modules/sdrpp_module.cmake")
 endif ()
 
+target_include_directories(tetra_demodulator PRIVATE "libosmocore" "libosmocore/include" "src/" "src/decoder/src" "src/decoder/codec" )
+
 include(${SDRPP_MODULE_CMAKE})
 
 # target_link_libraries(tetra_demodulator PRIVATE osmocore)
 
 # target_link_libraries(tetra_demodulator PRIVATE osmocore_st)
-target_include_directories(tetra_demodulator PRIVATE "src/" "src/decoder/src" "src/decoder/codec" "libosmocore/include")

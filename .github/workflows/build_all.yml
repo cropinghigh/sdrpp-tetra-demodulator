@@ -25,7 +25,7 @@ jobs:
         - name: Install dependencies
           run: 'sudo apt-get update && sudo apt-get install libosmocore libosmocore-dev libfftw3-dev libglfw3-dev libvolk2-dev libzstd-dev'
         - name: Download osmocore srcs
-          run: 'git clone https://github.com/osmocom/libosmocore'
+          run: 'git clone https://github.com/osmocom/libosmocore && cd libosmocore && autoreconf -i && ./configure'
         - name: Cmake
           run: 'mkdir build && cd build && ls -lah .. && cmake .. -DSDRPP_CORE_ROOT="$GITHUB_WORKSPACE/sdrpp_lib/SDRPlusPlus-nightly/core" -DSDRPP_LIB_ROOT="$GITHUB_WORKSPACE/sdrpp_lib/usr/lib" -DSDRPP_MODULE_CMAKE="$GITHUB_WORKSPACE/sdrpp_module_hack.cmake"'
         - name: Download ETSI codec
