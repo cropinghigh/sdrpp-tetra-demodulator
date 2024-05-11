@@ -11,8 +11,8 @@ jobs:
         steps:
         - name: Repo checkout
           uses: actions/checkout@v4
-        - name: Get SDR++ nightly source
-          run: 'wget https://github.com/AlexandreRouma/SDRPlusPlus/archive/refs/tags/nightly.tar.gz && pwd && ls -lah'
+        - name: Get SDR++ master source
+          run: 'wget https://github.com/AlexandreRouma/SDRPlusPlus/archive/refs/heads/master.tar.gz && pwd && ls -lah'
         - name: Get SDR++ nightly lib
           uses: dsaltares/fetch-gh-release-asset@master
           with:
@@ -21,13 +21,13 @@ jobs:
             file: 'sdrpp_debian_sid_amd64.deb'
             token: ${{ secrets.GITHUB_TOKEN }}
         - name: Unpack SDR++ source and core lib
-          run: 'mkdir sdrpp_lib && tar -zxvf nightly.tar.gz -C sdrpp_lib && dpkg-deb -xv sdrpp_debian_sid_amd64.deb ./sdrpp_lib && cp ./.github/workflows/sdrpp_module_hack.cmake ./ && pwd && ls -lah && ls -lah sdrpp_lib'
+          run: 'mkdir sdrpp_lib && tar -zxvf master.tar.gz -C sdrpp_lib && dpkg-deb -xv sdrpp_debian_sid_amd64.deb ./sdrpp_lib && cp ./.github/workflows/sdrpp_module_hack.cmake ./ && pwd && ls -lah && ls -lah sdrpp_lib'
         - name: Install dependencies
           run: 'sudo apt-get update && sudo apt-get install liburing-dev libpcsclite-dev libmnl-dev libtalloc-dev libsctp-dev gnutls-dev libusb-1.0.0-dev libmnl-dev libfftw3-dev libglfw3-dev libvolk2-dev libzstd-dev'
         - name: Download ETSI codec
           run: 'cd src/decoder/etsi_codec-patches && ./download_and_patch.sh'
         - name: Cmake
-          run: 'mkdir build && cd build && ls -lah .. && cmake .. -DSDRPP_CORE_ROOT="$GITHUB_WORKSPACE/sdrpp_lib/SDRPlusPlus-nightly/core" -DSDRPP_LIB_ROOT="$GITHUB_WORKSPACE/sdrpp_lib/usr/lib" -DSDRPP_MODULE_CMAKE="$GITHUB_WORKSPACE/sdrpp_module_hack.cmake"'
+          run: 'mkdir build && cd build && ls -lah .. && cmake .. -DSDRPP_CORE_ROOT="$GITHUB_WORKSPACE/sdrpp_lib/SDRPlusPlus-master/core" -DSDRPP_LIB_ROOT="$GITHUB_WORKSPACE/sdrpp_lib/usr/lib" -DSDRPP_MODULE_CMAKE="$GITHUB_WORKSPACE/sdrpp_module_hack.cmake"'
         - name: Make
           run: 'cd build && make -j4 && ldd tetra_demodulator.so'
         - name: Upload library
