@@ -97,10 +97,6 @@
 #include <osmocom/core/netns.h>
 #include <osmocom/core/netdev.h>
 
-#if ENABLE_LIBMNL
-#include <osmocom/core/mnl.h>
-#endif
-
 #define IFINDEX_UNUSED 0
 
 #define LOGNETDEV(netdev, lvl, fmt, args ...) \
@@ -117,9 +113,6 @@ struct netdev_netns_ctx {
 	unsigned int refcount; /* Number of osmo_netdev currently registered on this netns */
 	const char *netns_name; /* default netns has empty string "" (never NULL!) */
 	int netns_fd; /* FD to the netns with name "netns_name" above */
-#if ENABLE_LIBMNL
-	struct osmo_mnl *omnl;
-#endif
 };
 
 static struct netdev_netns_ctx *netdev_netns_ctx_alloc(void *ctx, const char *netns_name)
@@ -146,23 +139,12 @@ static void netdev_netns_ctx_free(struct netdev_netns_ctx *netns_ctx)
 
 	llist_del(&netns_ctx->entry);
 
-#if ENABLE_LIBMNL
-	if (netns_ctx->omnl) {
-		osmo_mnl_destroy(netns_ctx->omnl);
-		netns_ctx->omnl = NULL;
-	}
-#endif
-
 	if (netns_ctx->netns_fd != -1) {
 		close(netns_ctx->netns_fd);
 		netns_ctx->netns_fd = -1;
 	}
 	talloc_free(netns_ctx);
 }
-
-#if ENABLE_LIBMNL
-static int netdev_netns_ctx_mnl_cb(const struct nlmsghdr *nlh, void *data);
-#endif
 
 static int netdev_netns_ctx_init(struct netdev_netns_ctx *netns_ctx)
 {
@@ -188,12 +170,7 @@ static int netdev_netns_ctx_init(struct netdev_netns_ctx *netns_ctx)
 		}
 	}
 
-#if ENABLE_LIBMNL
-	netns_ctx->omnl = osmo_mnl_init(NULL, NETLINK_ROUTE, RTMGRP_LINK, netdev_netns_ctx_mnl_cb, netns_ctx);
-	rc = (netns_ctx->omnl ? 0 : -EFAULT);
-#else
 	rc = 0;
-#endif
 
 	/* switch back to default namespace */
 	if (netns_ctx->netns_name[0] != '\0') {
@@ -325,316 +302,6 @@ struct osmo_netdev {
 		} \
 	} while (0)
 
-#if ENABLE_LIBMNL
-/* validate the netlink attributes */
-static int netdev_mnl_data_attr_cb(const struct nlattr *attr, void *data)
-{
-	const struct nlattr **tb = data;
-	int type = mnl_attr_get_type(attr);
-
-	if (mnl_attr_type_valid(attr, IFLA_MAX) < 0)
-		return MNL_CB_OK;
-
-	switch (type) {
-	case IFLA_ADDRESS:
-		if (mnl_attr_validate(attr, MNL_TYPE_BINARY) < 0)
-			return MNL_CB_ERROR;
-		break;
-	case IFLA_MTU:
-		if (mnl_attr_validate(attr, MNL_TYPE_U32) < 0)
-			return MNL_CB_ERROR;
-		break;
-	case IFLA_IFNAME:
-		if (mnl_attr_validate(attr, MNL_TYPE_STRING) < 0)
-			return MNL_CB_ERROR;
-		break;
-	}
-	tb[type] = attr;
-	return MNL_CB_OK;
-}
-
-static void netdev_mnl_check_mtu_change(struct osmo_netdev *netdev, uint32_t mtu)
-{
-	if (netdev->if_mtu_known && netdev->if_mtu == mtu)
-		return;
-
-	LOGNETDEV(netdev, LOGL_NOTICE, "MTU changed: %u\n", mtu);
-	if (netdev->mtu_chg_cb)
-		netdev->mtu_chg_cb(netdev, mtu);
-
-	netdev->if_mtu_known = true;
-	netdev->if_mtu = mtu;
-}
-
-static void netdev_mnl_check_link_state_change(struct osmo_netdev *netdev, bool if_up)
-{
-	if (netdev->if_up_known && netdev->if_up == if_up)
-		return;
-
-	LOGNETDEV(netdev, LOGL_NOTICE, "Physical link state changed: %s\n",
-		  if_up ? "UP" : "DOWN");
-	if (netdev->ifupdown_ind_cb)
-		netdev->ifupdown_ind_cb(netdev, if_up);
-
-	netdev->if_up_known = true;
-	netdev->if_up = if_up;
-}
-
-static int netdev_mnl_cb(struct osmo_netdev *netdev, struct ifinfomsg *ifm, struct nlattr **tb)
-{
-	char ifnamebuf[IF_NAMESIZE];
-	const char *ifname = NULL;
-	bool if_running;
-
-	if (tb[IFLA_IFNAME]) {
-		ifname = mnl_attr_get_str(tb[IFLA_IFNAME]);
-		LOGNETDEV(netdev, LOGL_DEBUG, "%s(): ifname=%s\n", __func__, ifname);
-	} else {
-		/* Try harder to obtain the ifname. This code path should in
-		 * general not be triggered since usually IFLA_IFNAME is there */
-		struct osmo_netns_switch_state switch_state;
-		NETDEV_NETNS_ENTER(netdev, &switch_state, "if_indextoname");
-		ifname = if_indextoname(ifm->ifi_index, ifnamebuf);
-		NETDEV_NETNS_EXIT(netdev, &switch_state, "if_indextoname");
-	}
-	if (ifname) {
-		/* Update dev_name if it changed: */
-		if (strcmp(netdev->dev_name, ifname) != 0) {
-			if (netdev->dev_name_chg_cb)
-				netdev->dev_name_chg_cb(netdev, ifname);
-			osmo_talloc_replace_string(netdev, &netdev->dev_name, ifname);
-		}
-	}
-
-	if (tb[IFLA_MTU]) {
-		uint32_t mtu = mnl_attr_get_u32(tb[IFLA_MTU]);
-		LOGNETDEV(netdev, LOGL_DEBUG, "%s(): mtu=%u\n", __func__,  mtu);
-		netdev_mnl_check_mtu_change(netdev, mtu);
-	}
-	if (tb[IFLA_ADDRESS]) {
-		uint8_t *hwaddr = mnl_attr_get_payload(tb[IFLA_ADDRESS]);
-		uint16_t hwaddr_len = mnl_attr_get_payload_len(tb[IFLA_ADDRESS]);
-		LOGNETDEV(netdev, LOGL_DEBUG, "%s(): hwaddress=%s\n",
-		       __func__, osmo_hexdump(hwaddr, hwaddr_len));
-	}
-
-	if_running = !!(ifm->ifi_flags & IFF_RUNNING);
-	LOGNETDEV(netdev, LOGL_DEBUG, "%s(): up=%u running=%u\n",
-	       __func__, !!(ifm->ifi_flags & IFF_UP), if_running);
-	netdev_mnl_check_link_state_change(netdev, if_running);
-
-	return MNL_CB_OK;
-}
-
-static int netdev_netns_ctx_mnl_cb(const struct nlmsghdr *nlh, void *data)
-{
-	struct osmo_mnl *omnl = data;
-	struct netdev_netns_ctx *netns_ctx = (struct netdev_netns_ctx *)omnl->priv;
-	struct nlattr *tb[IFLA_MAX+1] = {};
-	struct ifinfomsg *ifm = mnl_nlmsg_get_payload(nlh);
-	struct osmo_netdev *netdev;
-
-	OSMO_ASSERT(omnl);
-	OSMO_ASSERT(ifm);
-
-	mnl_attr_parse(nlh, sizeof(*ifm), netdev_mnl_data_attr_cb, tb);
-
-	LOGP(DLGLOBAL, LOGL_DEBUG,
-	    "%s(): index=%d type=%d flags=0x%x family=%d\n", __func__,
-	    ifm->ifi_index, ifm->ifi_type, ifm->ifi_flags, ifm->ifi_family);
-
-	if (ifm->ifi_index == IFINDEX_UNUSED)
-		return MNL_CB_ERROR;
-
-	/* Find the netdev (if any) using key <netns,ifindex>.
-	 * Different users of the API may have its own osmo_netdev object
-	 * tracking potentially same netif, hence we need to iterate the whole list
-	 * and dispatch to all matches:
-	 */
-	bool found_any = false;
-	llist_for_each_entry(netdev, &g_netdev_list, entry) {
-		if (!netdev->registered)
-			continue;
-		if (netdev->ifindex != ifm->ifi_index)
-			continue;
-		if (strcmp(netdev->netns_ctx->netns_name, netns_ctx->netns_name))
-			continue;
-		found_any = true;
-		netdev_mnl_cb(netdev, ifm, &tb[0]);
-	}
-
-	if (!found_any) {
-		LOGP(DLGLOBAL, LOGL_DEBUG, "%s(): device with ifindex %u on netns %s not registered\n", __func__,
-		     ifm->ifi_index, netns_ctx->netns_name);
-	}
-	return MNL_CB_OK;
-}
-
-/* Trigger an initial dump of the iface to get link information */
-static int netdev_mnl_request_initial_dump(struct osmo_mnl *omnl, unsigned int if_index)
-{
-	char buf[MNL_SOCKET_BUFFER_SIZE];
-	struct nlmsghdr *nlh = mnl_nlmsg_put_header(buf);
-	struct ifinfomsg *ifm;
-
-	nlh->nlmsg_type	= RTM_GETLINK;
-	nlh->nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
-	nlh->nlmsg_seq = time(NULL);
-
-	ifm = mnl_nlmsg_put_extra_header(nlh, sizeof(*ifm));
-	ifm->ifi_family = AF_UNSPEC;
-	ifm->ifi_index = if_index;
-
-	if (mnl_socket_sendto(omnl->mnls, nlh, nlh->nlmsg_len) < 0) {
-		LOGP(DLGLOBAL, LOGL_ERROR, "mnl_socket_sendto\n");
-		return -EIO;
-	}
-
-	return 0;
-}
-
-static int netdev_mnl_set_ifupdown(struct osmo_mnl *omnl, unsigned int if_index,
-				   const char *dev_name, bool up)
-{
-	char buf[MNL_SOCKET_BUFFER_SIZE];
-	struct nlmsghdr *nlh = mnl_nlmsg_put_header(buf);
-	struct ifinfomsg *ifm;
-	unsigned int change = 0;
-	unsigned int flags = 0;
-
-	if (up) {
-		change |= IFF_UP;
-		flags |= IFF_UP;
-	} else {
-		change |= IFF_UP;
-		flags &= ~IFF_UP;
-	}
-
-	nlh->nlmsg_type	= RTM_NEWLINK;
-	nlh->nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
-	nlh->nlmsg_seq = time(NULL);
-
-	ifm = mnl_nlmsg_put_extra_header(nlh, sizeof(*ifm));
-	ifm->ifi_family = AF_UNSPEC;
-	ifm->ifi_change = change;
-	ifm->ifi_flags = flags;
-	ifm->ifi_index = if_index;
-
-	if (dev_name)
-		mnl_attr_put_str(nlh, IFLA_IFNAME, dev_name);
-
-	if (mnl_socket_sendto(omnl->mnls, nlh, nlh->nlmsg_len) < 0) {
-		LOGP(DLGLOBAL, LOGL_ERROR, "mnl_socket_sendto\n");
-		return -EIO;
-	}
-
-	return 0;
-}
-
-static int netdev_mnl_add_addr(struct osmo_mnl *omnl, unsigned int if_index, const struct osmo_sockaddr *osa, uint8_t prefix)
-{
-	char buf[MNL_SOCKET_BUFFER_SIZE];
-	struct nlmsghdr *nlh = mnl_nlmsg_put_header(buf);
-	struct ifaddrmsg *ifm;
-
-	nlh->nlmsg_type	= RTM_NEWADDR;
-	nlh->nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE | NLM_F_REPLACE | NLM_F_ACK;
-	nlh->nlmsg_seq = time(NULL);
-
-	ifm = mnl_nlmsg_put_extra_header(nlh, sizeof(*ifm));
-	ifm->ifa_family = osa->u.sa.sa_family;
-	ifm->ifa_prefixlen = prefix;
-	ifm->ifa_flags = IFA_F_PERMANENT;
-	ifm->ifa_scope = RT_SCOPE_UNIVERSE;
-	ifm->ifa_index = if_index;
-
-	/*
-	 * The exact meaning of IFA_LOCAL and IFA_ADDRESS depend
-	 * on the address family being used and the device type.
-	 * For broadcast devices (like the interfaces we use),
-	 * for IPv4 we specify both and they are used interchangeably.
-	 * For IPv6, only IFA_ADDRESS needs to be set.
-	 */
-	switch (osa->u.sa.sa_family) {
-	case AF_INET:
-		mnl_attr_put_u32(nlh, IFA_LOCAL, osa->u.sin.sin_addr.s_addr);
-		mnl_attr_put_u32(nlh, IFA_ADDRESS, osa->u.sin.sin_addr.s_addr);
-		break;
-	case AF_INET6:
-		mnl_attr_put(nlh, IFA_ADDRESS, sizeof(struct in6_addr), &osa->u.sin6.sin6_addr);
-		break;
-	default:
-		return -EINVAL;
-	}
-
-	if (mnl_socket_sendto(omnl->mnls, nlh, nlh->nlmsg_len) < 0) {
-		LOGP(DLGLOBAL, LOGL_ERROR, "mnl_socket_sendto\n");
-		return -EIO;
-	}
-
-	return 0;
-}
-
-static int netdev_mnl_add_route(struct osmo_mnl *omnl,
-				unsigned int if_index,
-				const struct osmo_sockaddr *dst_osa,
-				uint8_t dst_prefix,
-				const struct osmo_sockaddr *gw_osa)
-{
-	char buf[MNL_SOCKET_BUFFER_SIZE];
-	struct nlmsghdr *nlh = mnl_nlmsg_put_header(buf);
-	struct rtmsg *rtm;
-
-	nlh->nlmsg_type	= RTM_NEWROUTE;
-	nlh->nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE | NLM_F_ACK;
-	nlh->nlmsg_seq = time(NULL);
-
-	rtm = mnl_nlmsg_put_extra_header(nlh, sizeof(*rtm));
-	rtm->rtm_family = dst_osa->u.sa.sa_family;
-	rtm->rtm_dst_len = dst_prefix;
-	rtm->rtm_src_len = 0;
-	rtm->rtm_tos = 0;
-	rtm->rtm_protocol = RTPROT_STATIC;
-	rtm->rtm_table = RT_TABLE_MAIN;
-	rtm->rtm_type = RTN_UNICAST;
-	rtm->rtm_scope = gw_osa ? RT_SCOPE_UNIVERSE : RT_SCOPE_LINK;
-	rtm->rtm_flags = 0;
-
-	switch (dst_osa->u.sa.sa_family) {
-	case AF_INET:
-		mnl_attr_put_u32(nlh, RTA_DST, dst_osa->u.sin.sin_addr.s_addr);
-		break;
-	case AF_INET6:
-		mnl_attr_put(nlh, RTA_DST, sizeof(struct in6_addr), &dst_osa->u.sin6.sin6_addr);
-		break;
-	default:
-		return -EINVAL;
-	}
-
-	mnl_attr_put_u32(nlh, RTA_OIF, if_index);
-
-	if (gw_osa) {
-		switch (gw_osa->u.sa.sa_family) {
-		case AF_INET:
-			mnl_attr_put_u32(nlh, RTA_GATEWAY, gw_osa->u.sin.sin_addr.s_addr);
-			break;
-		case AF_INET6:
-			mnl_attr_put(nlh, RTA_GATEWAY, sizeof(struct in6_addr), &gw_osa->u.sin6.sin6_addr);
-			break;
-		default:
-			return -EINVAL;
-		}
-	}
-
-	if (mnl_socket_sendto(omnl->mnls, nlh, nlh->nlmsg_len) < 0) {
-		LOGP(DLGLOBAL, LOGL_ERROR, "mnl_socket_sendto\n");
-		return -EIO;
-	}
-
-	return 0;
-}
-#endif /* if ENABLE_LIBMNL */
-
 /*! Allocate a new netdev object.
  *  \param[in] ctx talloc context to use as a parent when allocating the netdev object
  *  \param[in] name A name providen to identify the netdev object
@@ -691,10 +358,6 @@ int osmo_netdev_register(struct osmo_netdev *netdev)
 		goto err_put_exit;
 	}
 	osmo_talloc_replace_string(netdev, &netdev->dev_name, ifnamebuf);
-
-#if ENABLE_LIBMNL
-	rc = netdev_mnl_request_initial_dump(netdev->netns_ctx->omnl, netdev->ifindex);
-#endif
 
 	NETDEV_NETNS_EXIT(netdev, &switch_state, "register");
 
@@ -875,13 +538,8 @@ int osmo_netdev_ifupdown(struct osmo_netdev *netdev, bool ifupdown)
 
 	NETDEV_NETNS_ENTER(netdev, &switch_state, "ifupdown");
 
-#if ENABLE_LIBMNL
-	rc = netdev_mnl_set_ifupdown(netdev->netns_ctx->omnl, netdev->ifindex,
-				     netdev->dev_name, ifupdown);
-#else
 	LOGNETDEV(netdev, LOGL_ERROR, "%s: NOT SUPPORTED. Build libosmocore with --enable-libmnl.\n", __func__);
 	rc = -ENOTSUP;
-#endif
 
 	NETDEV_NETNS_EXIT(netdev, &switch_state, "ifupdown");
 
@@ -908,12 +566,8 @@ int osmo_netdev_add_addr(struct osmo_netdev *netdev, const struct osmo_sockaddr 
 
 	NETDEV_NETNS_ENTER(netdev, &switch_state, "Add address");
 
-#if ENABLE_LIBMNL
-	rc = netdev_mnl_add_addr(netdev->netns_ctx->omnl, netdev->ifindex, addr, prefixlen);
-#else
 	LOGNETDEV(netdev, LOGL_ERROR, "%s: NOT SUPPORTED. Build libosmocore with --enable-libmnl.\n", __func__);
 	rc = -ENOTSUP;
-#endif
 
 	NETDEV_NETNS_EXIT(netdev, &switch_state, "Add address");
 
@@ -945,12 +599,8 @@ int osmo_netdev_add_route(struct osmo_netdev *netdev, const struct osmo_sockaddr
 
 	NETDEV_NETNS_ENTER(netdev, &switch_state, "Add route");
 
-#if ENABLE_LIBMNL
-	rc = netdev_mnl_add_route(netdev->netns_ctx->omnl, netdev->ifindex, dst_addr, dst_prefixlen, gw_addr);
-#else
 	LOGNETDEV(netdev, LOGL_ERROR, "%s: NOT SUPPORTED. Build libosmocore with --enable-libmnl.\n", __func__);
 	rc = -ENOTSUP;
-#endif
 
 	NETDEV_NETNS_EXIT(netdev, &switch_state, "Add route");
 
