@@ -48,7 +48,7 @@
 #define HAVE_INTTYPES_H 1
 
 /* Define 1 to enable SCTP support */
-#define HAVE_LIBSCTP 1
+#define HAVE_LIBSCTP 0
 
 /* Define to 1 if you have the 'localtime_r' function. */
 #define HAVE_LOCALTIME_R 1
