@@ -8,7 +8,7 @@
 /* #undef EMBEDDED */
 
 /* Enable netlink socket support via libmnl */
-#define ENABLE_LIBMNL 0
+// #define ENABLE_LIBMNL 0
 
 /* Enable systemd-journal logging target */
 /* #undef ENABLE_SYSTEMD_LOGGING */
@@ -48,7 +48,7 @@
 #define HAVE_INTTYPES_H 1
 
 /* Define 1 to enable SCTP support */
-#define HAVE_LIBSCTP 0
+// #define HAVE_LIBSCTP 0
 
 /* Define to 1 if you have the 'localtime_r' function. */
 #define HAVE_LOCALTIME_R 1
@@ -148,7 +148,7 @@
 #define HAVE_UNISTD_H 1
 
 /* Build with io_uring support */
-#define HAVE_URING 0
+// #define HAVE_URING 0
 
 /* Define to 1 if compiler has the '__builtin_cpu_supports' built-in function
    */
