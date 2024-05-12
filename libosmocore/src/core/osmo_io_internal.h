@@ -4,7 +4,7 @@
 
 #include <unistd.h>
 #include <stdbool.h>
-#include <netinet/sctp.h>
+// #include <netinet/sctp.h>
 
 #include <osmocom/core/osmo_io.h>
 #include <osmocom/core/linuxlist.h>
