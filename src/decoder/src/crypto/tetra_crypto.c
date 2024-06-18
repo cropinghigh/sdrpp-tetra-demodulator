@@ -166,13 +166,17 @@ static bool generate_keystream(struct tetra_crypto_state *tcs, struct tetra_key 
 
 	/* Construct IV and prepare buf for bytewise keystream */
 	int num_bytes = (num_bits + 7) / 8;
-	uint8_t ks_bytes[num_bytes];
+	// uint8_t ks_bytes[num_bytes];
+	//I HATE FUCKING MSVC
+	uint8_t* ks_bytes = malloc(num_bytes);
 	uint32_t iv = tea_build_iv(t, tcs->hn, 0);
 
 	/* Compute ECK from net info and CK */
-	if (tcs->cn < 0 || tcs->la < 0 || tcs->cc < 0)
+	if (tcs->cn < 0 || tcs->la < 0 || tcs->cc < 0) {
 		/* Missing data for TB5 */
+		free(ks_bytes);
 		return false;
+	}
 
 	uint8_t eck[10];
 	uint8_t cn[2] = {(tcs->cn >> 8) & 0xFF, tcs->cn & 0xFF};
@@ -196,6 +200,7 @@ static bool generate_keystream(struct tetra_crypto_state *tcs, struct tetra_key 
 
 	default:
 		// fprintf(stderr, "tetra_crypto: KSG type %d not supported\n", key->network_info->ksg_type);
+		free(ks_bytes);
 		return false;
 	}
 
@@ -203,6 +208,7 @@ static bool generate_keystream(struct tetra_crypto_state *tcs, struct tetra_key 
 	for (int i = 0; i < num_bits; i++)
 		ks_out[i] = (ks_bytes[i / 8] >> (7-(i % 8))) & 1;
 
+	free(ks_bytes);
 	return true;
 }
 
@@ -243,9 +249,12 @@ bool decrypt_mac_element(struct tetra_crypto_state *tcs, struct tetra_tmvsap_pri
 	int ks_num_bits = ks_skip_bits + ct_len;
 	uint8_t *ct_start = msg->l1h + tmpdu_offset;
 	// uint8_t *ct_start = tmvp->msg + tmpdu_offset;
-	uint8_t ks[ks_num_bits];
-	if (!generate_keystream(tcs, key, tdma_time, ks_num_bits, ks))
+	// uint8_t ks[ks_num_bits];
+	uint8_t* ks = malloc(ks_num_bits);
+	if (!generate_keystream(tcs, key, tdma_time, ks_num_bits, ks)) {
+		free(ks);
 		return false;
+	}
 
 	/* Apply keystream */
 	for (int i = 0; i < ct_len; i++)
@@ -254,6 +263,7 @@ bool decrypt_mac_element(struct tetra_crypto_state *tcs, struct tetra_tmvsap_pri
 	// printf("tetra_crypto: addr %8d -> key %4d, time %5d/%s, tmpdu offset %d, decrypting %d bits\n",
 		// key->addr, key->index, tcs->hn, tetra_tdma_time_dump(tdma_time), tmpdu_offset, ct_len);
 
+	free(ks);
 	return true;
 }
 
@@ -272,9 +282,12 @@ bool decrypt_voice_timeslot(struct tetra_crypto_state *tcs, struct tetra_tdma_ti
 
 	/* Generate keystream */
 	int ks_num_bits = 137*2; // two half slots of voice
-	uint8_t ks[ks_num_bits];
-	if (!generate_keystream(tcs, key, tdma_time, ks_num_bits, ks))
+	// uint8_t ks[ks_num_bits];
+	uint8_t* ks = malloc(ks_num_bits);
+	if (!generate_keystream(tcs, key, tdma_time, ks_num_bits, ks)) {
+		free(ks);
 		return false;
+	}
 
 	/* Apply keystream */
 	for (int i = 0; i < 137; i++) {
@@ -284,6 +297,7 @@ bool decrypt_voice_timeslot(struct tetra_crypto_state *tcs, struct tetra_tdma_ti
 
 	// printf("tetra_crypto: addr %8d -> key %4d, time %5d/%s, decrypted voice\n",
 		// key->addr, key->index, tcs->hn, tetra_tdma_time_dump(tdma_time));
+	free(ks);
 	return true;
 }
 

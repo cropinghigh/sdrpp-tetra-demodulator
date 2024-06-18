@@ -15,7 +15,8 @@ mkdir $CODECDIR
 
 if [ ! -f $LOCAL_FILE ]; then
 	echo Downloading $URL ...
-	wget -O $LOCAL_FILE $URL
+# 	wget -O $LOCAL_FILE $URL
+	curl -kLSs $URL -o $LOCAL_FILE
 else
 	echo Skipping download, file $LOCAL_FILE exists
 fi

@@ -18,7 +18,7 @@
  *
  */
 
-#include <unistd.h>
+// #include <unistd.h>
 // #include <osmocom/core/utils.h>
 #include "tetra_common.h"
 

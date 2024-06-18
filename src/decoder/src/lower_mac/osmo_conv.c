@@ -137,7 +137,8 @@ static void gen_path_metrics(int num_states, int16_t *sums,
 {
 	int i;
 	int16_t min;
-	int16_t new_sums[num_states];
+	// int16_t new_sums[num_states];
+	int16_t* new_sums = malloc(2*num_states);
 
 	for (i = 0; i < num_states / 2; i++)
 		acs_butterfly(i, num_states, metrics[i],
@@ -155,6 +156,7 @@ static void gen_path_metrics(int num_states, int16_t *sums,
 	}
 
 	memcpy(sums, new_sums, num_states * sizeof(int16_t));
+	free(new_sums);
 }
 
 /* Not-aligned Memory Allocator */
@@ -743,7 +745,8 @@ static void forward_traverse(struct vdecoder *dec, const int8_t *seq)
 static int conv_decode(struct vdecoder *dec, const int8_t *seq,
 	const int *punc, uint8_t *out, int len, int term)
 {
-	int8_t depunc[dec->len * dec->n];
+	int8_t* depunc = malloc(dec->len * dec->n);
+	// int8_t depunc[dec->len * dec->n];
 
 	if (punc) {
 		depuncture(seq, punc, depunc, dec->len * dec->n);
@@ -756,6 +759,7 @@ static int conv_decode(struct vdecoder *dec, const int8_t *seq,
 	if (term == CONV_TERM_TAIL_BITING)
 		forward_traverse(dec, seq);
 
+	free(depunc);
 	return traceback(dec, out, term, len);
 }
 

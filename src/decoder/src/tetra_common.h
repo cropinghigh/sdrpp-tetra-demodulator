@@ -227,9 +227,9 @@ struct osmo_prim_hdr {
 #include "tetra_mac_pdu.h"
 
 #ifdef DEBUG
-#define DEBUGP(x, args...)	printf(x, ## args)
+#define DEBUGP(cformat, ...) printf(cformat, __VA_ARGS__)
 #else
-#define DEBUGP(x, args...)	do { } while (0)
+#define DEBUGP(cformat, ...) do { } while (0)
 #endif
 
 #define TETRA_SYM_PER_TS	255
