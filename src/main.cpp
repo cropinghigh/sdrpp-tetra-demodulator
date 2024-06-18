@@ -5,7 +5,7 @@
 #include <gui/gui.h>
 #include <signal_path/signal_path.h>
 #include <module.h>
-#include <unistd.h>
+// #include <unistd.h>
 #include <fstream>
 
 #include <dsp/demod/psk.h>
@@ -206,7 +206,7 @@ private:
         ImGui::SetNextItemWidth(menuWidth);
         _this->constDiag.draw();
 
-        float avg = 1.0f - _this->symbolExtractor.stderr;
+        float avg = 1.0f - _this->symbolExtractor.standarderr;
         ImGui::Text("Signal quality: ");
         ImGui::SameLine();
         ImGui::SigQualityMeter(avg, 0.5f, 1.0f);

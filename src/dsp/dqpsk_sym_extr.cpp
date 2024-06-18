@@ -21,7 +21,7 @@ namespace dsp {
                     xerr+=errorbuf[i];
                 }
                 xerr /= (float)SYNC_DETECT_BUF;
-                stderr = xerr;
+                standarderr = xerr;
                 if(xerr >= 0.35f) {
                     sync = false;
                 } else {

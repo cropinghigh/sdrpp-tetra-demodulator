@@ -36,7 +36,7 @@ namespace dsp {
         int process(int count, const complex_t* in, uint8_t* out);
 
         bool sync = false;
-        float stderr = 0;
+        float standarderr = 0;
 
     private:
         uint8_t prev = 0;
