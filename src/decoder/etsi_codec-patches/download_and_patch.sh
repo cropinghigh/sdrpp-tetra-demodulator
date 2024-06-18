@@ -31,10 +31,14 @@ fi
 echo Unpacking ZIP ...
 cd $CODECDIR
 unzip -L $PATCHDIR/etsi_tetra_codec.zip
+echo Contents of $CODECDIR:
+ls -lah
 
 echo Applying Patches ...
+ls -lah $PATCHDIR
+cat $PATCHDIR/series
 for p in `cat "$PATCHDIR/series"`; do
-	echo "=> Applying patch '$p'..."
+	echo "=> Applying patch '$PATCHDIR/$p'..."
 	patch -p1 < "$PATCHDIR/$p"
 done
 

@@ -23,7 +23,7 @@
 #include <string.h>
 // #include <unistd.h>
 #include <errno.h>
-#include <linux/limits.h>
+// #include <linux/limits.h>
 
 // #include <osmocom/core/utils.h>
 // #include <osmocom/core/msgb.h>
