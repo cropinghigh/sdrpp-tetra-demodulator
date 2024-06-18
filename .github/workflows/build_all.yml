@@ -73,7 +73,7 @@ jobs:
           run: |
             $path = "C:/Program Files/Microsoft Visual Studio"
             $contents = Get-ChildItem -Path $path -Force -Recurse -Directory | Select-Object -First 1
-            $path = $path + "/" + $contents.Name + "Enterprise/VC/Tools/MSVC"
+            $path = $path + "/" + $contents.Name + "/Enterprise/VC/Tools/MSVC"
             $path
             $contents = Get-ChildItem -Path $path -Force -Recurse -Directory | Select-Object -First 1
             $path = $path + "/" + $contents.Name + "/bin/HostX64/x64/Lib.exe"
