@@ -70,8 +70,11 @@ if (MSVC)
     find_package(FFTW3f CONFIG REQUIRED)
     target_link_libraries(${PROJECT_NAME} PUBLIC FFTW3::fftw3f)
 
+
+    add_compile_definitions(WIN32_LEAN_AND_MEAN)
+    add_compile_definitions(_WINSOCKAPI_)
     # WinSock2
-    # target_link_libraries(${PROJECT_NAME} PUBLIC wsock32 ws2_32 iphlpapi)
+    target_link_libraries(${PROJECT_NAME} PUBLIC wsock32 ws2_32 iphlpapi)
 
     # ZSTD
     find_package(zstd CONFIG REQUIRED)
