@@ -21,9 +21,92 @@
 
 #include <stdint.h>
 #include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
 
-#include <osmocom/core/utils.h>
-#include <osmocom/core/bits.h>
+#include "tetra_common.h"
+
+const char *get_value_string_or_null(const struct value_string *vs,
+				     uint32_t val)
+{
+	int i;
+
+	if (!vs)
+		return NULL;
+
+	for (i = 0;; i++) {
+		if (vs[i].value == 0 && vs[i].str == NULL)
+			break;
+		if (vs[i].value == val)
+			return vs[i].str;
+	}
+
+	return NULL;
+}
+const char *get_value_string(const struct value_string *vs, uint32_t val)
+{
+	const char *str = get_value_string_or_null(vs, val);
+	if (str)
+		return str;
+
+	static char namebuf[255];
+	snprintf(namebuf, sizeof(namebuf), "unknown 0x%"PRIx32, val);
+	namebuf[sizeof(namebuf) - 1] = '\0';
+	return namebuf;
+}
+
+/*! Allocate a new message buffer from given talloc context
+ * \param[in] ctx talloc context from which to allocate
+ * \param[in] size Length in octets, including headroom
+ * \param[in] name Human-readable name to be associated with msgb
+ * \returns dynamically-allocated \ref msgb
+ *
+ * This function allocates a 'struct msgb' as well as the underlying
+ * memory buffer for the actual message data (size specified by \a size)
+ * using the talloc memory context previously set by \ref msgb_set_talloc_ctx
+ */
+struct msgb *msgb_alloc_c(uint16_t size, const char *name)
+{
+	struct msgb *msg;
+
+	// msg = talloc_named_const(ctx, sizeof(*msg) + size, name);
+	msg = (struct msgb*)malloc(sizeof(*msg) + size);
+	if (!msg) {
+		return NULL;
+	}
+
+	/* Manually zero-initialize allocated memory */
+	memset(msg, 0x00, sizeof(*msg) + size);
+
+	msg->data_len = size;
+	msg->len = 0;
+	msg->data = msg->_data;
+	msg->head = msg->_data;
+	msg->tail = msg->_data;
+
+	return msg;
+}
+
+/*! Allocate a new message buffer from tall_msgb_ctx
+ * \param[in] size Length in octets, including headroom
+ * \param[in] name Human-readable name to be associated with msgb
+ * \returns dynamically-allocated \ref msgb
+ *
+ * This function allocates a 'struct msgb' as well as the underlying
+ * memory buffer for the actual message data (size specified by \a size)
+ * using the talloc memory context previously set by \ref msgb_set_talloc_ctx
+ */
+struct msgb *msgb_alloc(uint16_t size, const char *name)
+{
+	return msgb_alloc_c(size, name);
+}
+
+
+
+
+
+// #include <osmocom/core/utils.h>
+// #include <osmocom/core/bits.h>
 
 #include "tetra_common.h"
 #include "tetra_prim.h"
@@ -127,6 +210,6 @@ const char *tetra_get_sap_name(uint8_t sap)
 
 void tetra_mac_state_init(struct tetra_mac_state *tms)
 {
-	INIT_LLIST_HEAD(&tms->voice_channels);
+	// INIT_LLIST_HEAD(&tms->voice_channels);
 	tms->codec_first_pass = true;
 }

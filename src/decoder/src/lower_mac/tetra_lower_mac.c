@@ -25,9 +25,9 @@
 #include <errno.h>
 #include <linux/limits.h>
 
-#include <osmocom/core/utils.h>
-#include <osmocom/core/msgb.h>
-#include <osmocom/core/talloc.h>
+// #include <osmocom/core/utils.h>
+// #include <osmocom/core/msgb.h>
+// #include <osmocom/core/talloc.h>
 
 #include <tetra_common.h>
 #include <tetra_tdma.h>
@@ -133,7 +133,9 @@ struct tetra_tmvsap_prim *tmvsap_prim_alloc(uint16_t prim, uint8_t op)
 {
 	struct tetra_tmvsap_prim *ttp;
 
-	ttp = talloc_zero(NULL, struct tetra_tmvsap_prim);
+	// ttp = talloc_zero(NULL, struct tetra_tmvsap_prim);
+	ttp = malloc(sizeof(struct tetra_tmvsap_prim));
+	memset(ttp, 0, sizeof(struct tetra_tmvsap_prim));
 	ttp->oph.msg = msgb_alloc(412, "tmvsap_prim");
 	ttp->oph.sap = TETRA_SAP_TMV;
 	ttp->oph.primitive = prim;
@@ -403,6 +405,8 @@ void tp_sap_udata_ind(enum tp_sap_data_type type, int blk_num, const uint8_t *bi
 	}
 
 out:
-	talloc_free(msg);
-	talloc_free(ttp);
+	// talloc_free(msg);
+	free(msg);
+	// talloc_free(ttp);
+	free(ttp);
 }

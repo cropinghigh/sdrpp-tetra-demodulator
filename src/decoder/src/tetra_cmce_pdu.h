@@ -1,6 +1,7 @@
 #ifndef TETRA_CMCE_PDU_H
 #define TETRA_CMCE_PDU_H
 
+#include "tetra_common.h"
 #include <stdint.h>
 
 /* 14.8.28 */

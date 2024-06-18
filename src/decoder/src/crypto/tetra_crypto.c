@@ -28,7 +28,8 @@
 #include <string.h>
 #include <assert.h>
 
-#include <osmocom/core/utils.h>
+// #include <osmocom/core/utils.h>
+
 #include <tetra_mac_pdu.h>
 #include <phy/tetra_burst.h>
 
@@ -109,8 +110,11 @@ void tetra_crypto_db_init(void)
 	/* Initialize tetra_crypto_database */
 	tcdb->num_keys = 0;
 	tcdb->num_nets = 0;
-	tcdb->keys = talloc_zero_array(NULL, struct tetra_key, TCDB_ALLOC_BLOCK_SIZE);
-	tcdb->nets = talloc_zero_array(NULL, struct tetra_netinfo, TCDB_ALLOC_BLOCK_SIZE);
+	tcdb->keys = malloc(sizeof(struct tetra_key)*TCDB_ALLOC_BLOCK_SIZE);
+	tcdb->nets = malloc(sizeof(struct tetra_netinfo)*TCDB_ALLOC_BLOCK_SIZE);
+	tcdb->nets_cnt = TCDB_ALLOC_BLOCK_SIZE;
+	// tcdb->keys = talloc_zero_array(NULL, struct tetra_key, TCDB_ALLOC_BLOCK_SIZE);
+	// tcdb->nets = talloc_zero_array(NULL, struct tetra_netinfo, TCDB_ALLOC_BLOCK_SIZE);
 
 	if (!tcdb->keys || !tcdb->nets) {
 		fprintf(stderr, "couldn't allocate memory for tetra_crypto_database\n");
@@ -234,9 +238,11 @@ bool decrypt_mac_element(struct tetra_crypto_state *tcs, struct tetra_tmvsap_pri
 
 	/* Generate keystream */
 	struct msgb *msg = tmvp->oph.msg;
+	
 	int ct_len = l1_len - tmpdu_offset;
 	int ks_num_bits = ks_skip_bits + ct_len;
 	uint8_t *ct_start = msg->l1h + tmpdu_offset;
+	// uint8_t *ct_start = tmvp->msg + tmpdu_offset;
 	uint8_t ks[ks_num_bits];
 	if (!generate_keystream(tcs, key, tdma_time, ks_num_bits, ks))
 		return false;
@@ -320,8 +326,13 @@ int load_keystore(char *tetra_keyfile)
 
 			/* Network definition */
 			i = tcdb->num_nets;
-			if (i > 0 && (i % TCDB_ALLOC_BLOCK_SIZE == 0))
-				tcdb->nets = talloc_realloc(NULL, tcdb->nets, struct tetra_netinfo, i + TCDB_ALLOC_BLOCK_SIZE);
+			if (i > 0 && (i % TCDB_ALLOC_BLOCK_SIZE == 0)) {
+				// tcdb->nets = talloc_realloc(NULL, tcdb->nets, struct tetra_netinfo, i + TCDB_ALLOC_BLOCK_SIZE);
+				void* newnets = malloc(sizeof(struct tetra_netinfo)*(i + TCDB_ALLOC_BLOCK_SIZE));
+				memcpy(newnets, tcdb->nets, sizeof(struct tetra_netinfo)*tcdb->nets_cnt);
+				free(tcdb->nets);
+				tcdb->nets = newnets;
+			}
 
 			c = sscanf(buf, "network mcc %d mnc %d ksg_type %d security_class %d\n",
 				&tcdb->nets[i].mcc, &tcdb->nets[i].mnc,
@@ -339,8 +350,13 @@ int load_keystore(char *tetra_keyfile)
 
 			/* Key definition */
 			i = tcdb->num_keys;
-			if (i > 0 && (i % TCDB_ALLOC_BLOCK_SIZE == 0))
-				tcdb->keys = talloc_realloc(NULL, tcdb->keys, struct tetra_key, i + TCDB_ALLOC_BLOCK_SIZE);
+			if (i > 0 && (i % TCDB_ALLOC_BLOCK_SIZE == 0)) {
+				// tcdb->keys = talloc_realloc(NULL, tcdb->keys, struct tetra_key, i + TCDB_ALLOC_BLOCK_SIZE);
+				void* newnets = malloc(sizeof(struct tetra_netinfo)*(i + TCDB_ALLOC_BLOCK_SIZE));
+				memcpy(newnets, tcdb->nets, sizeof(struct tetra_netinfo)*tcdb->nets_cnt);
+				free(tcdb->nets);
+				tcdb->nets = newnets;
+			}
 
 			c = sscanf(buf, "key mcc %d mnc %d addr %d key_type %d key_num %d key %02X%02X%02X%02X%02X%02X%02X%02X%02X%02X\n",
 				&tcdb->keys[i].mcc, &tcdb->keys[i].mnc, &tcdb->keys[i].addr,

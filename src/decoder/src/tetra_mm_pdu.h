@@ -1,6 +1,8 @@
 #ifndef TETRA_MM_PDU_H
 #define TETRA_MM_PDU_H
 
+#include <stdint.h>
+
 /* 16.10.39 PDU Type */
 enum tetra_mm_pdu_type_d {
 	TMM_PDU_T_D_OTAR		= 0x0,

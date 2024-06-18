@@ -3,7 +3,22 @@
 
 #include <stdint.h>
 
-#include <osmocom/core/prim.h>
+// #include <osmocom/core/prim.h>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 #include "tetra_common.h"
 
@@ -40,6 +55,7 @@ struct tmv_configure_param {
 
 struct tetra_tmvsap_prim {
 	struct osmo_prim_hdr oph;
+	// char* msg;
 	union {
 		struct tmv_unitdata_param unitdata;
 		struct tmv_configure_param configure;

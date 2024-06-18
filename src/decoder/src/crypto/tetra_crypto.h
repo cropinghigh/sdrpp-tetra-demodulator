@@ -86,6 +86,7 @@ struct tetra_crypto_database {
 	struct tetra_key *keys;
 	uint32_t num_nets;
 	struct tetra_netinfo *nets;
+	int nets_cnt;
 };
 extern struct tetra_crypto_database *tcdb;
 

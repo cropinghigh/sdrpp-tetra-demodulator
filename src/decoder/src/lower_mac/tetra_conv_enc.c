@@ -26,7 +26,10 @@
 #include <errno.h>
 #include <stdlib.h>
 
-#include <osmocom/core/utils.h>
+// #include <osmocom/core/utils.h>
+#ifndef ARRAY_SIZE
+#define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
+#endif
 
 #include <tetra_common.h>
 #include <lower_mac/tetra_conv_enc.h>

@@ -1,30 +1,19 @@
-/*! \file conv_acc.c
- * Accelerated Viterbi decoder implementation. */
-/*
- * Copyright (C) 2013, 2014 Thomas Tsou <tom@tsou.cc>
- *
- * All Rights Reserved
- *
- * SPDX-License-Identifier: GPL-2.0+
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- */
-
-#include <stdlib.h>
+#include "osmo_conv.h"
 #include <string.h>
+#include <stdlib.h>
 #include <errno.h>
 
-#include "osmo_config.h"
 
-#include <osmocom/core/conv.h>
+/* ------------------------------------------------------------------------ */
+/* Decoding (viterbi)                                                       */
+/* ------------------------------------------------------------------------ */
+
+#define MAX_AE 0x00ffffff
+
+/* Forward declaration for accerlated decoding with certain codes */
+// int
+// osmo_conv_decode_acc(const struct osmo_conv_code *code,
+// 		     const sbit_t *input, ubit_t *output);
 
 #define BIT2NRZ(REG,N)	(((REG >> N) & 0x01) * 2 - 1) * -1
 #define NUM_STATES(K)	(K == 7 ? 64 : 16)
@@ -41,15 +30,7 @@
 	vdec_free = &osmo_conv_##simd##_vdec_free; \
 }
 
-#undef HAVE_SSSE3
-#undef HAVE_AVX2
-#undef HAVE_NEON
-
 static int init_complete = 0;
-
-__attribute__ ((visibility("hidden"))) int avx2_supported = 0;
-__attribute__ ((visibility("hidden"))) int ssse3_supported = 0;
-__attribute__ ((visibility("hidden"))) int sse41_supported = 0;
 
 /**
  * These pointers are being initialized at runtime by the
@@ -71,83 +52,179 @@ void (*osmo_conv_metrics_k7_n3)(const int8_t *seq,
 void (*osmo_conv_metrics_k7_n4)(const int8_t *seq,
 	const int16_t *out, int16_t *sums, int16_t *paths, int norm);
 
-/* Forward malloc wrappers */
-int16_t *osmo_conv_gen_vdec_malloc(size_t n);
-void osmo_conv_gen_vdec_free(int16_t *ptr);
 
-#if defined(HAVE_SSSE3)
-int16_t *osmo_conv_sse_vdec_malloc(size_t n);
-void osmo_conv_sse_vdec_free(int16_t *ptr);
-#endif
 
-#if defined(HAVE_SSSE3) && defined(HAVE_AVX2)
-int16_t *osmo_conv_sse_avx_vdec_malloc(size_t n);
-void osmo_conv_sse_avx_vdec_free(int16_t *ptr);
-#endif
+/* Add-Compare-Select (ACS-Butterfly)
+ * Compute 4 accumulated path metrics and 4 path selections. Note that path
+ * selections are store as -1 and 0 rather than 0 and 1. This is to match
+ * the output format of the SSE packed compare instruction 'pmaxuw'.
+ */
 
-#ifdef HAVE_NEON
-int16_t *osmo_conv_neon_vdec_malloc(size_t n);
-void osmo_conv_neon_vdec_free(int16_t *ptr);
-#endif
+static void acs_butterfly(int state, int num_states,
+	int16_t metric, int16_t *sum,
+	int16_t *new_sum, int16_t *path)
+{
+	int state0, state1;
+	int sum0, sum1, sum2, sum3;
 
-/* Forward Metric Units */
+	state0 = *(sum + (2 * state + 0));
+	state1 = *(sum + (2 * state + 1));
+
+	sum0 = state0 + metric;
+	sum1 = state1 - metric;
+	sum2 = state0 - metric;
+	sum3 = state1 + metric;
+
+	if (sum0 >= sum1) {
+		*new_sum = sum0;
+		*path = -1;
+	} else {
+		*new_sum = sum1;
+		*path = 0;
+	}
+
+	if (sum2 >= sum3) {
+		*(new_sum + num_states / 2) = sum2;
+		*(path + num_states / 2) = -1;
+	} else {
+		*(new_sum + num_states / 2) = sum3;
+		*(path + num_states / 2) = 0;
+	}
+}
+
+/* Branch metrics unit N=2 */
+static void gen_branch_metrics_n2(int num_states, const int8_t *seq,
+	const int16_t *out, int16_t *metrics)
+{
+	int i;
+
+	for (i = 0; i < num_states / 2; i++) {
+		metrics[i] = seq[0] * out[2 * i + 0] +
+			seq[1] * out[2 * i + 1];
+	}
+}
+
+/* Branch metrics unit N=3 */
+static void gen_branch_metrics_n3(int num_states, const int8_t *seq,
+	const int16_t *out, int16_t *metrics)
+{
+	int i;
+
+	for (i = 0; i < num_states / 2; i++) {
+		metrics[i] = seq[0] * out[4 * i + 0] +
+			seq[1] * out[4 * i + 1] +
+			seq[2] * out[4 * i + 2];
+	}
+}
+
+/* Branch metrics unit N=4 */
+static void gen_branch_metrics_n4(int num_states, const int8_t *seq,
+	const int16_t *out, int16_t *metrics)
+{
+	int i;
+
+	for (i = 0; i < num_states / 2; i++) {
+		metrics[i] = seq[0] * out[4 * i + 0] +
+			seq[1] * out[4 * i + 1] +
+			seq[2] * out[4 * i + 2] +
+			seq[3] * out[4 * i + 3];
+	}
+}
+
+/* Path metric unit */
+static void gen_path_metrics(int num_states, int16_t *sums,
+	int16_t *metrics, int16_t *paths, int norm)
+{
+	int i;
+	int16_t min;
+	int16_t new_sums[num_states];
+
+	for (i = 0; i < num_states / 2; i++)
+		acs_butterfly(i, num_states, metrics[i],
+			sums, &new_sums[i], &paths[i]);
+
+	if (norm) {
+		min = new_sums[0];
+
+		for (i = 1; i < num_states; i++)
+			if (new_sums[i] < min)
+				min = new_sums[i];
+
+		for (i = 0; i < num_states; i++)
+			new_sums[i] -= min;
+	}
+
+	memcpy(sums, new_sums, num_states * sizeof(int16_t));
+}
+
+/* Not-aligned Memory Allocator */
+int16_t *osmo_conv_gen_vdec_malloc(size_t n)
+{
+	return (int16_t *) malloc(sizeof(int16_t) * n);
+}
+void osmo_conv_gen_vdec_free(int16_t *ptr)
+{
+	free(ptr);
+}
+
+/* 16-state branch-path metrics units (K=5) */
 void osmo_conv_gen_metrics_k5_n2(const int8_t *seq, const int16_t *out,
-	int16_t *sums, int16_t *paths, int norm);
+	int16_t *sums, int16_t *paths, int norm)
+{
+	int16_t metrics[8];
+
+	gen_branch_metrics_n2(16, seq, out, metrics);
+	gen_path_metrics(16, sums, metrics, paths, norm);
+}
 void osmo_conv_gen_metrics_k5_n3(const int8_t *seq, const int16_t *out,
-	int16_t *sums, int16_t *paths, int norm);
+	int16_t *sums, int16_t *paths, int norm)
+{
+	int16_t metrics[8];
+
+	gen_branch_metrics_n3(16, seq, out, metrics);
+	gen_path_metrics(16, sums, metrics, paths, norm);
+
+}
+
 void osmo_conv_gen_metrics_k5_n4(const int8_t *seq, const int16_t *out,
-	int16_t *sums, int16_t *paths, int norm);
+	int16_t *sums, int16_t *paths, int norm)
+{
+	int16_t metrics[8];
+
+	gen_branch_metrics_n4(16, seq, out, metrics);
+	gen_path_metrics(16, sums, metrics, paths, norm);
+
+}
+
+/* 64-state branch-path metrics units (K=7) */
 void osmo_conv_gen_metrics_k7_n2(const int8_t *seq, const int16_t *out,
-	int16_t *sums, int16_t *paths, int norm);
+	int16_t *sums, int16_t *paths, int norm)
+{
+	int16_t metrics[32];
+
+	gen_branch_metrics_n2(64, seq, out, metrics);
+	gen_path_metrics(64, sums, metrics, paths, norm);
+
+}
+
 void osmo_conv_gen_metrics_k7_n3(const int8_t *seq, const int16_t *out,
-	int16_t *sums, int16_t *paths, int norm);
+	int16_t *sums, int16_t *paths, int norm)
+{
+	int16_t metrics[32];
+
+	gen_branch_metrics_n3(64, seq, out, metrics);
+	gen_path_metrics(64, sums, metrics, paths, norm);
+
+}
+
 void osmo_conv_gen_metrics_k7_n4(const int8_t *seq, const int16_t *out,
-	int16_t *sums, int16_t *paths, int norm);
+	int16_t *sums, int16_t *paths, int norm)
+{
+	int16_t metrics[32];
 
-#if defined(HAVE_SSSE3)
-void osmo_conv_sse_metrics_k5_n2(const int8_t *seq, const int16_t *out,
-	int16_t *sums, int16_t *paths, int norm);
-void osmo_conv_sse_metrics_k5_n3(const int8_t *seq, const int16_t *out,
-	int16_t *sums, int16_t *paths, int norm);
-void osmo_conv_sse_metrics_k5_n4(const int8_t *seq, const int16_t *out,
-	int16_t *sums, int16_t *paths, int norm);
-void osmo_conv_sse_metrics_k7_n2(const int8_t *seq, const int16_t *out,
-	int16_t *sums, int16_t *paths, int norm);
-void osmo_conv_sse_metrics_k7_n3(const int8_t *seq, const int16_t *out,
-	int16_t *sums, int16_t *paths, int norm);
-void osmo_conv_sse_metrics_k7_n4(const int8_t *seq, const int16_t *out,
-	int16_t *sums, int16_t *paths, int norm);
-#endif
-
-#if defined(HAVE_SSSE3) && defined(HAVE_AVX2)
-void osmo_conv_sse_avx_metrics_k5_n2(const int8_t *seq, const int16_t *out,
-	int16_t *sums, int16_t *paths, int norm);
-void osmo_conv_sse_avx_metrics_k5_n3(const int8_t *seq, const int16_t *out,
-	int16_t *sums, int16_t *paths, int norm);
-void osmo_conv_sse_avx_metrics_k5_n4(const int8_t *seq, const int16_t *out,
-	int16_t *sums, int16_t *paths, int norm);
-void osmo_conv_sse_avx_metrics_k7_n2(const int8_t *seq, const int16_t *out,
-	int16_t *sums, int16_t *paths, int norm);
-void osmo_conv_sse_avx_metrics_k7_n3(const int8_t *seq, const int16_t *out,
-	int16_t *sums, int16_t *paths, int norm);
-void osmo_conv_sse_avx_metrics_k7_n4(const int8_t *seq, const int16_t *out,
-	int16_t *sums, int16_t *paths, int norm);
-#endif
-
-#if defined(HAVE_NEON)
-void osmo_conv_neon_metrics_k5_n2(const int8_t *seq, const int16_t *out,
-	int16_t *sums, int16_t *paths, int norm);
-void osmo_conv_neon_metrics_k5_n3(const int8_t *seq, const int16_t *out,
-	int16_t *sums, int16_t *paths, int norm);
-void osmo_conv_neon_metrics_k5_n4(const int8_t *seq, const int16_t *out,
-	int16_t *sums, int16_t *paths, int norm);
-void osmo_conv_neon_metrics_k7_n2(const int8_t *seq, const int16_t *out,
-	int16_t *sums, int16_t *paths, int norm);
-void osmo_conv_neon_metrics_k7_n3(const int8_t *seq, const int16_t *out,
-	int16_t *sums, int16_t *paths, int norm);
-void osmo_conv_neon_metrics_k7_n4(const int8_t *seq, const int16_t *out,
-	int16_t *sums, int16_t *paths, int norm);
-#endif
+	gen_branch_metrics_n4(64, seq, out, metrics);
+	gen_path_metrics(64, sums, metrics, paths, norm);
+}
 
 /* Trellis State
  * state - Internal lshift register value
@@ -566,11 +643,6 @@ static int vdec_init(struct vdecoder *dec, const struct osmo_conv_code *code)
 		switch (dec->n) {
 		case 2:
 /* rach len 14 is too short for neon */
-#ifdef HAVE_NEON
-			if (code->len < 100)
-				dec->metric_func = osmo_conv_gen_metrics_k5_n2;
-			else
-#endif
 			dec->metric_func = osmo_conv_metrics_k5_n2;
 			break;
 		case 3:
@@ -690,46 +762,9 @@ static int conv_decode(struct vdecoder *dec, const int8_t *seq,
 static void osmo_conv_init(void)
 {
 	init_complete = 1;
-
-#ifdef HAVE___BUILTIN_CPU_SUPPORTS
-	/* Detect CPU capabilities */
-	#ifdef HAVE_AVX2
-		avx2_supported = __builtin_cpu_supports("avx2");
-	#endif
-
-	#ifdef HAVE_SSSE3
-		ssse3_supported = __builtin_cpu_supports("ssse3");
-	#endif
-
-	#ifdef HAVE_SSE4_1
-		sse41_supported = __builtin_cpu_supports("sse4.1");
-	#endif
-#endif
-
-/**
- * Usage of curly braces is mandatory,
- * because we use multi-line define.
- */
-#if defined(HAVE_SSSE3) && defined(HAVE_AVX2)
-	if (ssse3_supported && avx2_supported) {
-		INIT_POINTERS(sse_avx);
-	} else if (ssse3_supported) {
-		INIT_POINTERS(sse);
-	} else {
-		INIT_POINTERS(gen);
-	}
-#elif defined(HAVE_SSSE3)
-	if (ssse3_supported) {
-		INIT_POINTERS(sse);
-	} else {
-		INIT_POINTERS(gen);
-	}
-#elif defined(HAVE_NEON)
-	INIT_POINTERS(neon);
-#else
 	INIT_POINTERS(gen);
-#endif
 }
+
 
 /* All-in-one Viterbi decoding  */
 int osmo_conv_decode_acc(const struct osmo_conv_code *code,
@@ -755,4 +790,439 @@ int osmo_conv_decode_acc(const struct osmo_conv_code *code,
 	vdec_deinit(&dec);
 
 	return rc;
+}
+
+
+void
+osmo_conv_decode_init(struct osmo_conv_decoder *decoder,
+		      const struct osmo_conv_code *code, int len,
+		      int start_state)
+{
+	int n_states;
+
+	/* Init */
+	if (len <= 0)
+		len = code->len;
+
+	n_states = 1 << (code->K - 1);
+
+	memset(decoder, 0x00, sizeof(struct osmo_conv_decoder));
+
+	decoder->code = code;
+	decoder->n_states = n_states;
+	decoder->len = len;
+
+	/* Allocate arrays */
+	decoder->ae = malloc(sizeof(unsigned int) * n_states);
+	decoder->ae_next = malloc(sizeof(unsigned int) * n_states);
+
+	decoder->state_history = malloc(sizeof(uint8_t) * n_states * (len + decoder->code->K - 1));
+
+	/* Classic reset */
+	osmo_conv_decode_reset(decoder, start_state);
+}
+
+void
+osmo_conv_decode_reset(struct osmo_conv_decoder *decoder, int start_state)
+{
+	int i;
+
+	/* Reset indexes */
+	decoder->o_idx = 0;
+	decoder->p_idx = 0;
+
+	/* Initial error */
+	if (start_state < 0) {
+		/* All states possible */
+		memset(decoder->ae, 0x00, sizeof(unsigned int) * decoder->n_states);
+	} else {
+		/* Fixed start state */
+		for (i = 0; i < decoder->n_states; i++) {
+			decoder->ae[i] = (i == start_state) ? 0 : MAX_AE;
+		}
+	}
+}
+
+void
+osmo_conv_decode_rewind(struct osmo_conv_decoder *decoder)
+{
+	int i;
+	unsigned int min_ae = MAX_AE;
+
+	/* Reset indexes */
+	decoder->o_idx = 0;
+	decoder->p_idx = 0;
+
+	/* Initial error normalize (remove constant) */
+	for (i = 0; i < decoder->n_states; i++) {
+		if (decoder->ae[i] < min_ae)
+			min_ae = decoder->ae[i];
+	}
+
+	for (i = 0; i < decoder->n_states; i++)
+		decoder->ae[i] -= min_ae;
+}
+
+void
+osmo_conv_decode_deinit(struct osmo_conv_decoder *decoder)
+{
+	free(decoder->ae);
+	free(decoder->ae_next);
+	free(decoder->state_history);
+
+	memset(decoder, 0x00, sizeof(struct osmo_conv_decoder));
+}
+
+int
+osmo_conv_decode_scan(struct osmo_conv_decoder *decoder,
+		      const sbit_t *input, int n)
+{
+	const struct osmo_conv_code *code = decoder->code;
+
+	int i, s, b, j;
+
+	int n_states;
+	unsigned int *ae;
+	unsigned int *ae_next;
+	uint8_t *state_history;
+	sbit_t *in_sym;
+
+	int i_idx, p_idx;
+
+	/* Prepare */
+	n_states = decoder->n_states;
+
+	ae = decoder->ae;
+	ae_next = decoder->ae_next;
+	state_history = &decoder->state_history[n_states * decoder->o_idx];
+
+	in_sym = alloca(sizeof(sbit_t) * code->N);
+
+	i_idx = 0;
+	p_idx = decoder->p_idx;
+
+	/* Scan the treillis */
+	for (i = 0; i < n; i++) {
+		/* Reset next accumulated error */
+		for (s = 0; s < n_states; s++)
+			ae_next[s] = MAX_AE;
+
+		/* Get input */
+		if (code->puncture) {
+			/* Hard way ... */
+			for (j = 0; j < code->N; j++) {
+				int idx = ((decoder->o_idx + i) * code->N) + j;
+				if (idx == code->puncture[p_idx]) {
+					in_sym[j] = 0;	/* Undefined */
+					p_idx++;
+				} else {
+					in_sym[j] = input[i_idx];
+					i_idx++;
+				}
+			}
+		} else {
+			/* Easy, just copy N bits */
+			memcpy(in_sym, &input[i_idx], code->N);
+			i_idx += code->N;
+		}
+
+		/* Scan all state */
+		for (s = 0; s < n_states; s++) {
+			/* Scan possible input bits */
+			for (b = 0; b < 2; b++) {
+				int nae, ov, e;
+				uint8_t m;
+
+				/* Next output and state */
+				uint8_t out = code->next_output[s][b];
+				uint8_t state = code->next_state[s][b];
+
+				/* New error for this path */
+				nae = ae[s];			/* start from last error */
+				m = 1 << (code->N - 1);		/* mask for 'out' bit selection */
+
+				for (j = 0; j < code->N; j++) {
+					int is = (int)in_sym[j];
+					if (is) {
+						ov = (out & m) ? -127 : 127; /* sbit_t value for it */
+						e = is - ov;                 /* raw error for this bit */
+						nae += (e * e) >> 9;         /* acc the squared/scaled value */
+					}
+					m >>= 1;                     /* next mask bit */
+				}
+
+				/* Is it survivor ? */
+				if (ae_next[state] > nae) {
+					ae_next[state] = nae;
+					state_history[(n_states * i) + state] = s;
+				}
+			}
+		}
+
+		/* Copy accumulated error */
+		memcpy(ae, ae_next, sizeof(unsigned int) * n_states);
+	}
+
+	/* Update decoder state */
+	decoder->p_idx = p_idx;
+	decoder->o_idx += n;
+
+	return i_idx;
+}
+
+int
+osmo_conv_decode_flush(struct osmo_conv_decoder *decoder, const sbit_t *input)
+{
+	const struct osmo_conv_code *code = decoder->code;
+
+	int i, s, j;
+
+	int n_states;
+	unsigned int *ae;
+	unsigned int *ae_next;
+	uint8_t *state_history;
+	sbit_t *in_sym;
+
+	int i_idx, p_idx;
+
+	/* Prepare */
+	n_states = decoder->n_states;
+
+	ae = decoder->ae;
+	ae_next = decoder->ae_next;
+	state_history = &decoder->state_history[n_states * decoder->o_idx];
+
+	in_sym = alloca(sizeof(sbit_t) * code->N);
+
+	i_idx = 0;
+	p_idx = decoder->p_idx;
+
+	/* Scan the treillis */
+	for (i = 0; i < code->K - 1; i++) {
+		/* Reset next accumulated error */
+		for (s = 0; s < n_states; s++)
+			ae_next[s] = MAX_AE;
+
+		/* Get input */
+		if (code->puncture) {
+			/* Hard way ... */
+			for (j = 0; j < code->N; j++) {
+				int idx = ((decoder->o_idx + i) * code->N) + j;
+				if (idx == code->puncture[p_idx]) {
+					in_sym[j] = 0;	/* Undefined */
+					p_idx++;
+				} else {
+					in_sym[j] = input[i_idx];
+					i_idx++;
+				}
+			}
+		} else {
+			/* Easy, just copy N bits */
+			memcpy(in_sym, &input[i_idx], code->N);
+			i_idx += code->N;
+		}
+
+		/* Scan all state */
+		for (s = 0; s < n_states; s++) {
+			int nae, ov, e;
+			uint8_t m;
+
+			/* Next output and state */
+			uint8_t out;
+			uint8_t state;
+
+			if (code->next_term_output) {
+				out = code->next_term_output[s];
+				state = code->next_term_state[s];
+			} else {
+				out = code->next_output[s][0];
+				state = code->next_state[s][0];
+			}
+
+			/* New error for this path */
+			nae = ae[s];			/* start from last error */
+			m = 1 << (code->N - 1);		/* mask for 'out' bit selection */
+
+			for (j = 0; j < code->N; j++) {
+				int is = (int)in_sym[j];
+				if (is) {
+					ov = (out & m) ? -127 : 127; /* sbit_t value for it */
+					e = is - ov;                 /* raw error for this bit */
+					nae += (e * e) >> 9;         /* acc the squared/scaled value */
+				}
+				m >>= 1;                     /* next mask bit */
+			}
+
+			/* Is it survivor ? */
+			if (ae_next[state] > nae) {
+				ae_next[state] = nae;
+				state_history[(n_states * i) + state] = s;
+			}
+		}
+
+		/* Copy accumulated error */
+		memcpy(ae, ae_next, sizeof(unsigned int) * n_states);
+	}
+
+	/* Update decoder state */
+	decoder->p_idx = p_idx;
+	decoder->o_idx += code->K - 1;
+
+	return i_idx;
+}
+
+int
+osmo_conv_decode_get_best_end_state(struct osmo_conv_decoder *decoder)
+{
+	const struct osmo_conv_code *code = decoder->code;
+
+	int min_ae, min_state;
+	int s;
+
+	/* If flushed, we _know_ the end state */
+	if (code->term == CONV_TERM_FLUSH)
+		return 0;
+
+	/* Search init */
+	min_state = -1;
+	min_ae = MAX_AE;
+
+	/* If tail biting, we search for the minimum path metric that
+	 * gives a circular traceback (i.e. start_state == end_state */
+	if (code->term == CONV_TERM_TAIL_BITING) {
+		int t, n, i;
+		uint8_t *sh_ptr;
+
+		for (s = 0; s < decoder->n_states; s++) {
+			/* Check if that state traces back to itself */
+			n = decoder->o_idx;
+			sh_ptr = &decoder->state_history[decoder->n_states * (n-1)];
+			t = s;
+
+			for (i = n - 1; i >= 0; i--) {
+				t = sh_ptr[t];
+				sh_ptr -= decoder->n_states;
+			}
+
+			if (s != t)
+				continue;
+
+			/* If it does, consider it */
+			if (decoder->ae[s] < min_ae) {
+				min_ae = decoder->ae[s];
+				min_state = s;
+			}
+		}
+
+		if (min_ae < MAX_AE)
+			return min_state;
+	}
+
+	/* Finally, just the lowest path metric */
+	for (s = 0; s < decoder->n_states; s++) {
+		/* Is it smaller ? */
+		if (decoder->ae[s] < min_ae) {
+			min_ae = decoder->ae[s];
+			min_state = s;
+		}
+	}
+
+	return min_state;
+}
+
+int
+osmo_conv_decode_get_output(struct osmo_conv_decoder *decoder,
+			    ubit_t *output, int has_flush, int end_state)
+{
+	const struct osmo_conv_code *code = decoder->code;
+
+	int min_ae;
+	uint8_t min_state, cur_state;
+	int i, n;
+
+	uint8_t *sh_ptr;
+
+	/* End state ? */
+	if (end_state < 0)
+		end_state = osmo_conv_decode_get_best_end_state(decoder);
+
+	if (end_state < 0)
+		return -1;
+
+	min_state = (uint8_t) end_state;
+	min_ae = decoder->ae[end_state];
+
+	/* Traceback */
+	cur_state = min_state;
+
+	n = decoder->o_idx;
+
+	sh_ptr = &decoder->state_history[decoder->n_states * (n-1)];
+
+		/* No output for the K-1 termination input bits */
+	if (has_flush) {
+		for (i = 0; i < code->K - 1; i++) {
+			cur_state = sh_ptr[cur_state];
+			sh_ptr -= decoder->n_states;
+		}
+		n -= code->K - 1;
+	}
+
+	/* Generate output backward */
+	for (i = n - 1; i >= 0; i--) {
+		min_state = cur_state;
+		cur_state = sh_ptr[cur_state];
+
+		sh_ptr -= decoder->n_states;
+
+		if (code->next_state[cur_state][0] == min_state)
+			output[i] = 0;
+		else
+			output[i] = 1;
+	}
+
+	return min_ae;
+}
+
+/*! All-in-one convolutional decoding function
+ *  \param[in] code description of convolutional code to be used
+ *  \param[in] input array of soft bits (coded)
+ *  \param[out] output array of unpacked bits (decoded)
+ *
+ * This is an all-in-one function, taking care of
+ * \ref osmo_conv_decode_init, \ref osmo_conv_decode_scan,
+ * \ref osmo_conv_decode_flush, \ref osmo_conv_decode_get_best_end_state,
+ * \ref osmo_conv_decode_get_output and \ref osmo_conv_decode_deinit.
+ */
+int
+osmo_conv_decode(const struct osmo_conv_code *code,
+		 const sbit_t *input, ubit_t *output)
+{
+	struct osmo_conv_decoder decoder;
+	int rv, l;
+
+	/* Use accelerated implementation for supported codes */
+	if ((code->N <= 4) && ((code->K == 5) || (code->K == 7)))
+		return osmo_conv_decode_acc(code, input, output);
+
+	osmo_conv_decode_init(&decoder, code, 0, 0);
+
+	if (code->term == CONV_TERM_TAIL_BITING) {
+		osmo_conv_decode_scan(&decoder, input, code->len);
+		osmo_conv_decode_rewind(&decoder);
+	}
+
+	l = osmo_conv_decode_scan(&decoder, input, code->len);
+
+	if (code->term == CONV_TERM_FLUSH)
+		osmo_conv_decode_flush(&decoder, &input[l]);
+
+	rv = osmo_conv_decode_get_output(&decoder, output,
+		code->term == CONV_TERM_FLUSH,		/* has_flush */
+		-1					/* end_state */
+	);
+
+	osmo_conv_decode_deinit(&decoder);
+
+	return rv;
 }

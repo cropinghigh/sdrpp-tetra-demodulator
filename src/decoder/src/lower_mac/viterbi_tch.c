@@ -20,7 +20,8 @@
 #include <stdint.h>
 #include <string.h>
 
-#include <osmocom/core/conv.h>
+// #include <osmocom/core/conv.h>
+#include "osmo_conv.h"
 
 #include <lower_mac/viterbi_tch.h>
 

@@ -22,7 +22,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#include <osmocom/core/utils.h>
+// #include <osmocom/core/utils.h>
 
 //#define DEBUG
 

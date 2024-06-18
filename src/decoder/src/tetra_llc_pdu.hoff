@@ -3,7 +3,7 @@
 
 #include <stdbool.h>
 
-#include <osmocom/core/linuxlist.h>
+// #include <osmocom/core/linuxlist.h>
 
 /* Table 21.1 */
 enum tetra_llc_pdu_t {
@@ -88,16 +88,16 @@ int tetra_llc_pdu_parse(struct tetra_llc_pdu *lpp, uint8_t *buf, int len);
 
 /* TETRA LLC state */
 struct tllc_state {
-	struct llist_head list;
+	// struct llist_head list;
 
-	struct {
-		struct llist_head defrag_list;
-	} rx;
+	// struct {
+	// 	struct llist_head defrag_list;
+	// } rx;
 };
 
 /* entry in the defragmentation queue */
 struct tllc_defrag_q_e {
-	struct llist_head list;
+	// struct llist_head list;
 	unsigned int ns;	/* current de-fragmenting */
 	unsigned int last_ss;	/* last received S(S) */
 

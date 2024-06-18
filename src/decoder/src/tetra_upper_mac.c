@@ -23,17 +23,17 @@
 #include <string.h>
 #include <unistd.h>
 
-#include <osmocom/core/utils.h>
-#include <osmocom/core/msgb.h>
-#include <osmocom/core/talloc.h>
+// #include <osmocom/core/utils.h>
+// #include <osmocom/core/msgb.h>
+// #include <osmocom/core/talloc.h>
 
 #include "crypto/tetra_crypto.h"
 #include "tetra_common.h"
 #include "tetra_prim.h"
 #include "tetra_upper_mac.h"
 #include "tetra_mac_pdu.h"
-#include "tetra_llc_pdu.h"
-#include "tetra_llc.h"
+// #include "tetra_llc_pdu.h"
+// #include "tetra_llc.h"
 
 /* FIXME move global fragslots to context variable */
 struct fragslot fragslots[FRAGSLOT_NR_SLOTS] = {0};
@@ -42,7 +42,8 @@ void init_fragslot(struct fragslot *fragslot)
 {
 	if (fragslot->msgb) {
 		/* Should never be the case, but just to be sure */
-		talloc_free(fragslot->msgb);
+		// talloc_free(fragslot->msgb);
+		free(fragslot->msgb);
 		memset(fragslot, 0, sizeof(struct fragslot));
 	}
 	fragslot->msgb = msgb_alloc(FRAGSLOT_MSGB_SIZE, "fragslot");
@@ -51,7 +52,8 @@ void init_fragslot(struct fragslot *fragslot)
 void cleanup_fragslot(struct fragslot *fragslot)
 {
 	if (fragslot->msgb) {
-		talloc_free(fragslot->msgb);
+		// talloc_free(fragslot->msgb);
+		free(fragslot->msgb);
 	}
 	memset(fragslot, 0, sizeof(struct fragslot));
 }
@@ -276,7 +278,8 @@ static int rx_resrc(struct tetra_tmvsap_prim *tmvp, struct tetra_mac_state *tms)
 	// printf(": %s\n", osmo_ubit_dump(msg->l2h, msgb_l2len(msg)));
 	if (rsd.macpdu_length != MACPDU_LEN_START_FRAG || !REASSEMBLE_FRAGMENTS) {
 		/* Non-fragmented resource (or no reassembly desired) */
-		rx_tm_sdu(tms, msg, msgb_l2len(msg));
+		// rx_tm_sdu(tms, msg, msgb_l2len(msg));
+		//TODO: fix llc
 	} else {
 		/* Fragmented resource */
 		slot = tmvp->u.unitdata.tdma_time.tn;
@@ -415,7 +418,8 @@ static int rx_macend(struct tetra_tmvsap_prim *tmvp, struct tetra_mac_state *tms
 
 		/* Message is completed inside fragmsgb now */
 		if (!fragslots[slot].encryption || fragslots[slot].key) {
-			rx_tm_sdu(tms, fragmsgb, fragslots[slot].length);
+			// rx_tm_sdu(tms, fragmsgb, fragslots[slot].length);
+			//TODO: FIX LLC
 		}
 	} else {
 		// printf("FRAG: got end frag with len %d without start packet for slot=%d\n", length_indicator * 8, slot);
@@ -450,7 +454,8 @@ static int rx_suppl(struct tetra_tmvsap_prim *tmvp, struct tetra_mac_state *tms)
 
 	//if (sud.encryption_mode == 0)
 	msg->l2h = msg->l1h + tmpdu_offset;
-	rx_tm_sdu(tms, msg, 100);
+	// rx_tm_sdu(tms, msg, 100);
+	//TODO: FIX LLC
 
 	// printf("\n");
 	return -1; /* TODO FIXME check length */
@@ -566,7 +571,8 @@ static int rx_tmv_unitdata_ind(struct tetra_tmvsap_prim *tmvp, struct tetra_mac_
 				if (msg->l1h[3] == TETRA_MAC_FRAGE_FRAG) {
 					// printf("FRAG/END FRAG: ");
 					msg->l2h = msg->l1h+4;
-					rx_tm_sdu(tms, msg, 100 /*FIXME*/);
+					// rx_tm_sdu(tms, msg, 100 /*FIXME*/);
+					//TODO: FIX LLC
 					// printf("\n");
 				} else {
 					// printf("FRAG/END END\n");

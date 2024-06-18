@@ -26,7 +26,6 @@ file(GLOB SRC LIST_DIRECTORIES false
     "src/decoder/codec/c-code/fexp_tet.c"
     "src/decoder/codec/c-code/fmat_tet.c"
     "src/decoder/codec/c-code/tetra_op.c"
-    "libosmocore/src/core/*.c"
     )
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=native")
@@ -38,6 +37,6 @@ endif ()
 
 include(${SDRPP_MODULE_CMAKE})
 
-target_include_directories(tetra_demodulator PRIVATE BEFORE "libosmocore" "libosmocore/src/core" "libosmocore/include" "src/" "src/decoder/src" "src/decoder/codec" )
+target_include_directories(tetra_demodulator PRIVATE BEFORE "src/" "src/decoder/src" "src/decoder/codec" )
 
 target_link_libraries(tetra_demodulator PRIVATE talloc)

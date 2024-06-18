@@ -3,9 +3,9 @@
 #include <unistd.h>
 #include <string.h>
 
-#include <osmocom/core/msgb.h>
-#include <osmocom/core/talloc.h>
-#include <osmocom/core/bits.h>
+// #include <osmocom/core/msgb.h>
+// #include <osmocom/core/talloc.h>
+// #include <osmocom/core/bits.h>
 
 #include "tetra_mle_pdu.h"
 #include "tetra_mle.h"

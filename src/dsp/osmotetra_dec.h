@@ -2,8 +2,8 @@
 
 #include <dsp/processor.h>
 
-#include <osmocom/core/utils.h>
-#include <osmocom/core/talloc.h>
+// #include <osmocom/core/utils.h>
+// #include <osmocom/core/talloc.h>
 
 extern "C" {
     #include "tetra_common.h"
@@ -22,31 +22,47 @@ namespace dsp {
         osmotetradec() {}
         
         ~osmotetradec() {
-            talloc_free(trs);
-            talloc_free(tms->t_display_st);
-            talloc_free(tms->tcs);
-            talloc_free(tms);
+            free(trs);
+            free(tms->t_display_st);
+            free(tms->tcs);
+            free(tms);
+            // talloc_free(trs);
+            // talloc_free(tms->t_display_st);
+            // talloc_free(tms->tcs);
+            // talloc_free(tms);
         }
 
         osmotetradec(stream<uint8_t>* in) { init(in); }
         
         void init(stream<uint8_t>* in)  {
             /* Initialize tetra mac state and crypto state */
-#ifdef OTC_GLOBAL
-            tms = talloc_zero(OTC_GLOBAL, struct tetra_mac_state);
-#else
-            tms = talloc_zero(tetra_tall_ctx, struct tetra_mac_state);
-#endif
+// #ifdef OTC_GLOBAL
+//             tms = talloc_zero(OTC_GLOBAL, struct tetra_mac_state);
+// #else
+//             tms = talloc_zero(tetra_tall_ctx, struct tetra_mac_state);
+// #endif
+//             tetra_mac_state_init(tms);
+//             tms->tcs = talloc_zero(NULL, struct tetra_crypto_state);
+//             tms->t_display_st = talloc_zero(NULL, struct tetra_display_state);
+//             tetra_crypto_state_init(tms->tcs);
+// 
+// #ifdef OTC_GLOBAL
+//             trs = talloc_zero(OTC_GLOBAL, struct tetra_rx_state);
+// #else
+//             trs = talloc_zero(tetra_tall_ctx, struct tetra_rx_state);
+// #endif
+            tms = (struct tetra_mac_state*)malloc(sizeof(struct tetra_mac_state));
+            memset(tms, 0, sizeof(struct tetra_mac_state));
             tetra_mac_state_init(tms);
-            tms->tcs = talloc_zero(NULL, struct tetra_crypto_state);
-            tms->t_display_st = talloc_zero(NULL, struct tetra_display_state);
+            tms->tcs = (struct tetra_crypto_state*)malloc(sizeof(struct tetra_crypto_state));
+            memset(tms->tcs, 0, sizeof(struct tetra_crypto_state));
+            tms->t_display_st = (struct tetra_display_state*)malloc(sizeof(struct tetra_display_state));
+            memset(tms->t_display_st, 0, sizeof(struct tetra_display_state));
             tetra_crypto_state_init(tms->tcs);
+            trs = (struct tetra_rx_state*)malloc(sizeof(struct tetra_rx_state));
+            memset(trs, 0, sizeof(struct tetra_rx_state));
 
-#ifdef OTC_GLOBAL
-            trs = talloc_zero(OTC_GLOBAL, struct tetra_rx_state);
-#else
-            trs = talloc_zero(tetra_tall_ctx, struct tetra_rx_state);
-#endif
+
             trs->burst_cb_priv = tms;
 
             tms->put_voice_data = put_voice_data;

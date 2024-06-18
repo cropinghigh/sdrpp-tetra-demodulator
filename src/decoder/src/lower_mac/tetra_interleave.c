@@ -26,7 +26,7 @@
 #include <stdio.h>
 #include <errno.h>
 
-#include <osmocom/core/utils.h>
+// #include <osmocom/core/utils.h>
 
 #include <tetra_common.h>
 

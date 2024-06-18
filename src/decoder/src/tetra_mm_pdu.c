@@ -19,7 +19,8 @@
  */
 
 #include <unistd.h>
-#include <osmocom/core/utils.h>
+// #include <osmocom/core/utils.h>
+#include "tetra_common.h"
 
 #include "tetra_mm_pdu.h"
 

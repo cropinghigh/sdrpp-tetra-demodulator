@@ -1,30 +1,8 @@
-/*! \file conv.h
- * Osmocom convolutional encoder and decoder. */
-/*
- * Copyright (C) 2011  Sylvain Munaut <tnt@246tNt.com>
- *
- * All Rights Reserved
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- */
-
-/*! \defgroup conv Convolutional encoding and decoding routines
- *  @{
- * \file conv.h */
-
 #pragma once
-
 #include <stdint.h>
 
-#include <osmocom/core/bits.h>
+typedef int8_t  sbit_t;
+typedef uint8_t ubit_t;
 
 /*! possibe termination types
  *
@@ -61,42 +39,6 @@ struct osmo_conv_code {
 	const int *puncture;		/*!< Punctured bits indexes */
 };
 
-
-/* Common */
-
-int osmo_conv_get_input_length(const struct osmo_conv_code *code, int len);
-int osmo_conv_get_output_length(const struct osmo_conv_code *code, int len);
-
-
-/* Encoding */
-
-	/* Low level API */
-
-/*! convolutional encoder state */
-struct osmo_conv_encoder {
-	const struct osmo_conv_code *code; /*!< for which code? */
-	int i_idx;	/*!< Next input bit index */
-	int p_idx;	/*!< Current puncture index */
-	uint8_t state;	/*!< Current state */
-};
-
-void osmo_conv_encode_init(struct osmo_conv_encoder *encoder,
-                           const struct osmo_conv_code *code);
-void osmo_conv_encode_load_state(struct osmo_conv_encoder *encoder,
-                                 const ubit_t *input);
-int  osmo_conv_encode_raw(struct osmo_conv_encoder *encoder,
-                          const ubit_t *input, ubit_t *output, int n);
-int  osmo_conv_encode_flush(struct osmo_conv_encoder *encoder, ubit_t *output);
-
-	/* All-in-one */
-int  osmo_conv_encode(const struct osmo_conv_code *code,
-                      const ubit_t *input, ubit_t *output);
-
-
-/* Decoding */
-
-	/* Low level API */
-
 /*! convolutional decoder state */
 struct osmo_conv_decoder {
 	const struct osmo_conv_code *code; /*!< for which code? */
@@ -113,6 +55,7 @@ struct osmo_conv_decoder {
 	uint8_t *state_history;	/*!< state history [len][n_states] */
 };
 
+
 void osmo_conv_decode_init(struct osmo_conv_decoder *decoder,
                            const struct osmo_conv_code *code,
                            int len, int start_state);
@@ -128,9 +71,7 @@ int osmo_conv_decode_get_best_end_state(struct osmo_conv_decoder *decoder);
 int osmo_conv_decode_get_output(struct osmo_conv_decoder *decoder,
                                 ubit_t *output, int has_flush, int end_state);
 
+
 	/* All-in-one */
 int osmo_conv_decode(const struct osmo_conv_code *code,
                      const sbit_t *input, ubit_t *output);
-
-
-/*! @} */
