@@ -4,8 +4,13 @@
 #include <inttypes.h>
 
 #if __BYTE_ORDER == __LITTLE_ENDIAN
-#define be32(x) __builtin_bswap32(x)
-#define be16(x) __builtin_bswap16(x)
+    #if _MSC_VER
+        #define be32(x) _byteswap_ulong(x)
+        #define be16(x) _byteswap_ushort(x)
+    #else
+        #define be32(x) __builtin_bswap32(x)
+        #define be16(x) __builtin_bswap16(x)
+    #endif
 #else
 #define be32(x) (x)
 #define be16(x) (x)

@@ -900,7 +900,8 @@ osmo_conv_decode_scan(struct osmo_conv_decoder *decoder,
 	ae_next = decoder->ae_next;
 	state_history = &decoder->state_history[n_states * decoder->o_idx];
 
-	in_sym = alloca(sizeof(sbit_t) * code->N);
+	// in_sym = alloca(sizeof(sbit_t) * code->N);
+	in_sym = malloc(sizeof(sbit_t) * code->N);
 
 	i_idx = 0;
 	p_idx = decoder->p_idx;
@@ -971,6 +972,7 @@ osmo_conv_decode_scan(struct osmo_conv_decoder *decoder,
 	decoder->p_idx = p_idx;
 	decoder->o_idx += n;
 
+	free(in_sym);
 	return i_idx;
 }
 
@@ -996,7 +998,8 @@ osmo_conv_decode_flush(struct osmo_conv_decoder *decoder, const sbit_t *input)
 	ae_next = decoder->ae_next;
 	state_history = &decoder->state_history[n_states * decoder->o_idx];
 
-	in_sym = alloca(sizeof(sbit_t) * code->N);
+	// in_sym = alloca(sizeof(sbit_t) * code->N);
+	in_sym = malloc(sizeof(sbit_t) * code->N);
 
 	i_idx = 0;
 	p_idx = decoder->p_idx;
@@ -1072,6 +1075,7 @@ osmo_conv_decode_flush(struct osmo_conv_decoder *decoder, const sbit_t *input)
 	decoder->p_idx = p_idx;
 	decoder->o_idx += code->K - 1;
 
+	free(in_sym);
 	return i_idx;
 }
 
