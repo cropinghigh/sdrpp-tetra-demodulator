@@ -4,6 +4,7 @@ on: push
 env:
     # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
     BUILD_TYPE: Debug
+    VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
 
 jobs:
     build_linux_latest:
@@ -35,3 +36,60 @@ jobs:
           with:
               name: tetra_demodulator
               path: ./build/tetra_demodulator.so
+    build_windows:
+        runs-on: windows-latest
+        steps:
+        - name: Repo checkout
+          uses: actions/checkout@v4
+        - name: Create Build Environment
+          run: cmake -E make_directory build
+        - name: Download PothosSDR
+          run: Invoke-WebRequest -Uri "https://downloads.myriadrf.org/builds/PothosSDR/PothosSDR-2020.01.26-vc14-x64.exe" -OutFile ${{runner.workspace}}/pothos.exe
+        - name: Install PothosSDR
+          run: mkdir "C:/Program Files/PothosSDR" ; 7z x ${{runner.workspace}}/pothos.exe -o"C:/Program Files/PothosSDR/"
+        - name: Download libusb
+          run: Invoke-WebRequest -Uri "https://github.com/libusb/libusb/releases/download/v1.0.23/libusb-1.0.23.7z" -OutFile ${{runner.workspace}}/libusb.7z
+        - name: Patch Pothos with earlier libusb version
+          working-directory: ${{runner.workspace}}
+          run: 7z x libusb.7z -olibusb_old ; rm "C:/Program Files/PothosSDR/bin/libusb-1.0.dll" ; cp "libusb_old/MS64/dll/libusb-1.0.dll" "C:/Program Files/PothosSDR/bin/" ; rm "C:/Program Files/PothosSDR/lib/libusb-1.0.lib" ; cp "libusb_old/MS64/dll/libusb-1.0.lib" "C:/Program Files/PothosSDR/lib/"
+        - name: Get SDR++ master source
+          run: Invoke-WebRequest -Uri "https://github.com/AlexandreRouma/SDRPlusPlus/archive/refs/heads/master.zip" -OutFile master.zip
+        - name: Get SDR++ nightly lib
+          uses: dsaltares/fetch-gh-release-asset@master
+          with:
+            repo: 'AlexandreRouma/SDRPlusPlus'
+            version: 'tags/nightly'
+            file: 'sdrpp_windows_x64.zip'
+            token: ${{ secrets.GITHUB_TOKEN }}
+        - name: Unpack SDR++ source and core lib
+          run: mkdir sdrpp_lib ; 7z x master.zip -osdrpp_lib ; 7z x sdrpp_windows_x64.zip -osdrpp_lib ; cp .github/workflows/sdrpp_module_hack.cmake ./
+        - name: Prepare MinGW
+          run: C:/msys64/msys2_shell.cmd -defterm -here -no-start -mingw64 -c "pacman --noconfirm -S --needed base-devel mingw-w64-x86_64-tools"
+        - name: Generate .def file
+          working-directory: sdrpp_lib/sdrpp_windows_x64
+          run: C:/msys64/msys2_shell.cmd -defterm -here -no-start -mingw64 -c "gendef sdrpp_core.dll"
+        - name: Generate .lib file
+          working-directory: sdrpp_lib/sdrpp_windows_x64
+          run: '& "C:/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/Tools/MSVC/14.38.33130/bin/HostX64/x64/Lib.exe" /DEF:sdrpp_core.def'
+        - name: Export GitHub Actions cache environment variables
+          uses: actions/github-script@v7
+          with:
+            script: |
+              core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+              core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+        - name: Install vcpkg dependencies
+          run: vcpkg install fftw3:x64-windows glfw3:x64-windows portaudio:x64-windows zstd:x64-windows libusb:x64-windows
+        - name: Download ETSI codec
+          shell: bash
+          run: 'cd src/decoder/etsi_codec-patches && ./download_and_patch.sh'
+        - name: Prepare CMake
+          working-directory: build
+          run: cmake "$Env:GITHUB_WORKSPACE" "-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake" -DSDRPP_CORE_ROOT="$Env:GITHUB_WORKSPACE/sdrpp_lib/SDRPlusPlus-master/core" -DSDRPP_LIB_ROOT="$Env:GITHUB_WORKSPACE/sdrpp_lib/sdrpp_windows_x64" -DSDRPP_MODULE_CMAKE="$Env:GITHUB_WORKSPACE/sdrpp_module_hack.cmake" -DCMAKE_BUILD_TYPE=Release
+        - name: Build
+          working-directory: build
+          run: cmake --build . --config Release --verbose
+        - name: Upload library
+          uses: actions/upload-artifact@v4
+          with:
+              name: tetra_demodulator_win
+              path: build/Release/tetra_demodulator.dll

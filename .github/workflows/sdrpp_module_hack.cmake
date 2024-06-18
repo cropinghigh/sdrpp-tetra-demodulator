@@ -30,7 +30,11 @@ endif ()
 
 # Created shared lib and link to core
 add_library(${PROJECT_NAME} SHARED ${SRC})
-target_link_libraries(${PROJECT_NAME} PRIVATE "${SDRPP_LIB_ROOT}/libsdrpp_core.so")
+if (MSVC)
+    target_link_libraries(${PROJECT_NAME} PRIVATE "${SDRPP_LIB_ROOT}/sdrpp_core.lib")
+else ()
+    target_link_libraries(${PROJECT_NAME} PRIVATE "${SDRPP_LIB_ROOT}/libsdrpp_core.so")
+endif()
 target_include_directories(${PROJECT_NAME} PRIVATE "${SDRPP_CORE_ROOT}/src/" "${SDRPP_CORE_ROOT}/src/imgui/")
 set_target_properties(${PROJECT_NAME} PROPERTIES PREFIX "")
 
@@ -38,4 +42,38 @@ set_target_properties(${PROJECT_NAME} PROPERTIES PREFIX "")
 target_compile_options(${PROJECT_NAME} PRIVATE ${SDRPP_MODULE_COMPILER_FLAGS})
 
 # Install directives
-install(TARGETS ${PROJECT_NAME} DESTINATION lib/sdrpp/plugins) 
+install(TARGETS ${PROJECT_NAME} DESTINATION lib/sdrpp/plugins)
+
+if (MSVC)
+    set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
+endif ()
+
+if (MSVC)
+    # Lib path
+    target_link_directories(${PROJECT_NAME} PUBLIC "C:/Program Files/PothosSDR/lib/")
+
+    # Misc headers
+    target_include_directories(${PROJECT_NAME} PUBLIC "C:/Program Files/PothosSDR/include/")
+
+    # Volk
+    target_link_libraries(${PROJECT_NAME} PUBLIC volk)
+
+    # OpenGL
+    find_package(OpenGL REQUIRED)
+    target_link_libraries(${PROJECT_NAME} PUBLIC OpenGL::GL)
+
+    # GLFW3
+    find_package(glfw3 CONFIG REQUIRED)
+    target_link_libraries(${PROJECT_NAME} PUBLIC glfw)
+
+    # FFTW3
+    find_package(FFTW3f CONFIG REQUIRED)
+    target_link_libraries(${PROJECT_NAME} PUBLIC FFTW3::fftw3f)
+
+    # WinSock2
+    # target_link_libraries(${PROJECT_NAME} PUBLIC wsock32 ws2_32 iphlpapi)
+
+    # ZSTD
+    find_package(zstd CONFIG REQUIRED)
+    target_link_libraries(${PROJECT_NAME} PUBLIC zstd::libzstd_shared)
+endif ()
