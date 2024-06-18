@@ -10,7 +10,7 @@ if (NOT SDRPP_MODULE_COMPILER_FLAGS)
     if (${CMAKE_BUILD_TYPE} MATCHES "Debug")
         # Debug Flags
         if (MSVC)
-            set(SDRPP_MODULE_COMPILER_FLAGS /std:c++17 /EHsc /FORCE:UNRESOLVED)
+            set(SDRPP_MODULE_COMPILER_FLAGS /std:c++17 /EHsc)
         elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
             set(SDRPP_MODULE_COMPILER_FLAGS -g -Og -std=c++17 -Wno-unused-command-line-argument -undefined dynamic_lookup)
         else ()
@@ -19,7 +19,7 @@ if (NOT SDRPP_MODULE_COMPILER_FLAGS)
     else()
         # Normal Flags
         if (MSVC)
-            set(SDRPP_MODULE_COMPILER_FLAGS /O2 /Ob2 /std:c++17 /EHsc /FORCE:UNRESOLVED)
+            set(SDRPP_MODULE_COMPILER_FLAGS /O2 /Ob2 /std:c++17 /EHsc )
         elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
             set(SDRPP_MODULE_COMPILER_FLAGS -O3 -std=c++17 -Wno-unused-command-line-argument -undefined dynamic_lookup)
         else ()
@@ -40,6 +40,10 @@ set_target_properties(${PROJECT_NAME} PROPERTIES PREFIX "")
 
 # Set compile arguments
 target_compile_options(${PROJECT_NAME} PRIVATE ${SDRPP_MODULE_COMPILER_FLAGS})
+
+if (MSVC)
+    target_link_options(${PROJECT_NAME} PRIVATE /FORCE:UNRESOLVED)
+endif ()
 
 # Install directives
 install(TARGETS ${PROJECT_NAME} DESTINATION lib/sdrpp/plugins)
