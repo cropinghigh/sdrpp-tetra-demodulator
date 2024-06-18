@@ -91,11 +91,11 @@ jobs:
         - name: ETSI codec patches
           run: |
             cd src/decoder/codec
-            patch -p1 < "../etsi_codec-patches/makefile-cleanups.patch"
-            patch -p1 < "../etsi_codec-patches/fix_64bit.patch"
-            patch -p1 < "../etsi_codec-patches/round_private.patch"
-            patch -p1 < "../etsi_codec-patches/filename-case.patch"
-            patch -p1 < "../etsi_codec-patches/log_stderr.patch"
+            git apply --ignore-space-change --ignore-whitespace --whitespace=nowarn "../etsi_codec-patches/makefile-cleanups.patch"
+            git apply --ignore-space-change --ignore-whitespace --whitespace=nowarn "../etsi_codec-patches/fix_64bit.patch"
+            git apply --ignore-space-change --ignore-whitespace --whitespace=nowarn "../etsi_codec-patches/round_private.patch"
+            git apply --ignore-space-change --ignore-whitespace --whitespace=nowarn "../etsi_codec-patches/filename-case.patch"
+            git apply --ignore-space-change --ignore-whitespace --whitespace=nowarn "../etsi_codec-patches/log_stderr.patch"
         - name: Install vcpkg dependencies
           run: vcpkg install fftw3:x64-windows glfw3:x64-windows portaudio:x64-windows zstd:x64-windows libusb:x64-windows
         - name: Prepare CMake
