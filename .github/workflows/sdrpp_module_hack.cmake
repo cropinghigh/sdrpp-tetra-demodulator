@@ -71,6 +71,7 @@ if (MSVC)
     target_link_libraries(${PROJECT_NAME} PUBLIC FFTW3::fftw3f)
 
 
+    add_compile_definitions(NOMINMAX)
     add_compile_definitions(WIN32_LEAN_AND_MEAN)
     add_compile_definitions(_WINSOCKAPI_)
     # WinSock2
