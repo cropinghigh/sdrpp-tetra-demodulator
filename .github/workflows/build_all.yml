@@ -100,12 +100,17 @@ jobs:
           run: vcpkg install fftw3:x64-windows glfw3:x64-windows portaudio:x64-windows zstd:x64-windows libusb:x64-windows
         - name: Prepare CMake
           working-directory: build
-          run: cmake "$Env:GITHUB_WORKSPACE" "-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake" -DSDRPP_CORE_ROOT="$Env:GITHUB_WORKSPACE/sdrpp_lib/SDRPlusPlus-master/core" -DSDRPP_LIB_ROOT="$Env:GITHUB_WORKSPACE/sdrpp_lib/sdrpp_windows_x64" -DSDRPP_MODULE_CMAKE="$Env:GITHUB_WORKSPACE/sdrpp_module_hack.cmake" -DCMAKE_BUILD_TYPE=Debug
+          run: cmake "$Env:GITHUB_WORKSPACE" "-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake" -DSDRPP_CORE_ROOT="$Env:GITHUB_WORKSPACE/sdrpp_lib/SDRPlusPlus-master/core" -DSDRPP_LIB_ROOT="$Env:GITHUB_WORKSPACE/sdrpp_lib/sdrpp_windows_x64" -DSDRPP_MODULE_CMAKE="$Env:GITHUB_WORKSPACE/sdrpp_module_hack.cmake" -DCMAKE_BUILD_TYPE=RelWithDebInfo
         - name: Build
           working-directory: build
-          run: cmake --build . --config Debug --verbose
+          run: cmake --build . --config RelWithDebInfo --verbose
         - name: Upload library
           uses: actions/upload-artifact@v4
           with:
               name: tetra_demodulator_win
-              path: build/Debug/tetra_demodulator.dll
+              path: build/RelWithDebInfo/tetra_demodulator.dll
+        - name: Upload pdb
+          uses: actions/upload-artifact@v4
+          with:
+              name: tetra_demodulator_win_pdb
+              path: build/RelWithDebInfo/tetra_demodulator.pdb
