@@ -22,6 +22,7 @@ namespace dsp {
         osmotetradec() {}
         
         ~osmotetradec() {
+            free(tms->fragslots);
             free(trs);
             free(tms->t_display_st);
             free(tms->tcs);
@@ -61,6 +62,8 @@ namespace dsp {
             tetra_crypto_state_init(tms->tcs);
             trs = (struct tetra_rx_state*)malloc(sizeof(struct tetra_rx_state));
             memset(trs, 0, sizeof(struct tetra_rx_state));
+            tms->fragslots = (struct fragslot*)malloc(sizeof(struct fragslot)*FRAGSLOT_NR_SLOTS);
+            memset(tms->fragslots, 0, sizeof(struct fragslot)*FRAGSLOT_NR_SLOTS);
 
 
             trs->burst_cb_priv = tms;

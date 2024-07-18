@@ -11,6 +11,8 @@
 #include <assert.h>
 // #include <osmocom/core/linuxlist.h>
 
+#include "tetra_fragslot.h"
+
 
 struct value_string {
 	uint32_t value;		/*!< numeric value */
@@ -317,6 +319,8 @@ struct tetra_mac_state {
 	void* put_voice_data_ctx;
 	int last_frame;
 	int curr_active_timeslot;
+	
+	struct fragslot* fragslots;
 };
 
 extern struct tetra_display_state t_display_state;
