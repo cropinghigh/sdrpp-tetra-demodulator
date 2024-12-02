@@ -210,7 +210,7 @@ private:
         ImGui::Text("Signal quality: ");
         ImGui::SameLine();
         ImGui::SigQualityMeter(avg, 0.5f, 1.0f);
-        ImGui::BoxIndicator(GImGui->FontSize*2, _this->symbolExtractor.sync ? IM_COL32(5, 230, 5, 255) : IM_COL32(230, 5, 5, 255));
+        ImGui::BoxIndicator(ImGui::GetFontSize()*2, _this->symbolExtractor.sync ? IM_COL32(5, 230, 5, 255) : IM_COL32(230, 5, 5, 255));
         ImGui::SameLine();
         ImGui::Text(" Sync");
 
@@ -231,7 +231,7 @@ private:
         if(_this->decoder_mode == 0) {
             //OSMO-TETRA
             int dec_st = _this->osmotetradecoder.getRxState();
-            ImGui::BoxIndicator(GImGui->FontSize*2, (dec_st == 0) ? IM_COL32(230, 5, 5, 255) : ((dec_st == 2) ? IM_COL32(5, 230, 5, 255) : IM_COL32(230, 230, 5, 255)));
+            ImGui::BoxIndicator(ImGui::GetFontSize()*2, (dec_st == 0) ? IM_COL32(230, 5, 5, 255) : ((dec_st == 2) ? IM_COL32(5, 230, 5, 255) : IM_COL32(230, 230, 5, 255)));
             ImGui::SameLine();
             ImGui::Text(" Decoder:  %s", (dec_st == 0) ? "Unlocked" : ((dec_st == 2) ? "Locked" : "Know next start"));
             if(dec_st != 2) {
@@ -270,13 +270,13 @@ private:
             }
             int crc_failed = _this->osmotetradecoder.getLastCrcFail();
             if(crc_failed) {
-                ImGui::BoxIndicator(GImGui->FontSize*2, IM_COL32(230, 5, 5, 255));
+                ImGui::BoxIndicator(ImGui::GetFontSize()*2, IM_COL32(230, 5, 5, 255));
                 ImGui::SameLine();
                 ImGui::Text(" CRC: "); ImGui::SameLine();
                 ImGui::TextColored(ImVec4(0.95, 0.05, 0.05, 1.0), "FAIL");
                 style::beginDisabled();
             } else {
-                ImGui::BoxIndicator(GImGui->FontSize*2, IM_COL32(5, 230, 5, 255));
+                ImGui::BoxIndicator(ImGui::GetFontSize()*2, IM_COL32(5, 230, 5, 255));
                 ImGui::SameLine();
                 ImGui::Text(" CRC: "); ImGui::SameLine();
                 ImGui::TextColored(ImVec4(0.05, 0.95, 0.05, 1.0), "PASS");
