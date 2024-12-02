@@ -1,4 +1,6 @@
 #pragma once
+#define GImGui (ImGui::GetCurrentContext())
+
 #include <imgui/imgui.h>
 
 #ifndef IMGUI_DEFINE_MATH_OPERATORS
