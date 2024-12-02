@@ -13,11 +13,11 @@ namespace ImGui {
 
     void BoxIndicator(float menuWidth, ImU32 color, const ImVec2& size_arg = ImVec2(0, 0)) {
         ImGuiWindow* window = GetCurrentWindow();
-        ImGuiStyle& style = GImGui->Style;
+        ImGuiStyle& style = GetStyle();
 
         ImVec2 min = window->DC.CursorPos;
-        min.x = menuWidth - (GImGui->FontSize);
-        ImVec2 size = CalcItemSize(size_arg, (GImGui->FontSize), (GImGui->FontSize));
+        min.x = menuWidth - (GetFontSize());
+        ImVec2 size = CalcItemSize(size_arg, (GetFontSize()), (GetFontSize()));
         ImRect bb(min, min+size);
 
         float lineHeight = size.y;
@@ -32,12 +32,12 @@ namespace ImGui {
 
     void SigQualityMeter(float avg, float val_min, float val_max, const ImVec2& size_arg = ImVec2(0, 0)) {
         ImGuiWindow* window = GetCurrentWindow();
-        ImGuiStyle& style = GImGui->Style;
+        ImGuiStyle& style = GetStyle();
 
         avg = std::clamp<float>(avg, val_min, val_max);
 
         ImVec2 min = window->DC.CursorPos;
-        ImVec2 size = CalcItemSize(size_arg, CalcItemWidth(), (GImGui->FontSize / 2) + style.FramePadding.y);
+        ImVec2 size = CalcItemSize(size_arg, CalcItemWidth(), (GetFontSize() / 2) + style.FramePadding.y);
         ImRect bb(min, min + size);
 
         float lineHeight = size.y;
