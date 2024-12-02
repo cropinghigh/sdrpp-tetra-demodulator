@@ -64,21 +64,22 @@ jobs:
         - name: Unpack SDR++ source and core lib
           run: mkdir sdrpp_lib ; 7z x master.zip -osdrpp_lib ; 7z x sdrpp_windows_x64.zip -osdrpp_lib ; cp .github/workflows/sdrpp_module_hack.cmake ./
         - name: Prepare MinGW
-          run: C:/msys64/msys2_shell.cmd -defterm -here -no-start -mingw64 -c "pacman --noconfirm -S --needed base-devel mingw-w64-x86_64-tools"
+          run: C:/msys64/msys2_shell.cmd -defterm -here -no-start -mingw64 -c "pacman --noconfirm -S --needed base-devel mingw-w64-x86_64-binutils mingw-w64-x86_64-tools"
         - name: Generate .def file
           working-directory: sdrpp_lib/sdrpp_windows_x64
           run: C:/msys64/msys2_shell.cmd -defterm -here -no-start -mingw64 -c "gendef sdrpp_core.dll"
         - name: Generate .lib file
           working-directory: sdrpp_lib/sdrpp_windows_x64
-          run: |
-            $path = "C:/Program Files/Microsoft Visual Studio"
-            $contents = Get-ChildItem -Path $path -Force -Recurse -Directory | Select-Object -First 1
-            $path = $path + "/" + $contents.Name + "/Enterprise/VC/Tools/MSVC"
-            $path
-            $contents = Get-ChildItem -Path $path -Force -Recurse -Directory | Select-Object -First 1
-            $path = $path + "/" + $contents.Name + "/bin/HostX64/x64/Lib.exe"
-            $path
-            & $path /DEF:sdrpp_core.def
+          # run: |
+          #   $path = "C:/Program Files/Microsoft Visual Studio"
+          #   $contents = Get-ChildItem -Path $path -Force -Recurse -Directory | Select-Object -First 1
+          #   $path = $path + "/" + $contents.Name + "/Enterprise/VC/Tools/MSVC"
+          #   $path
+          #   $contents = Get-ChildItem -Path $path -Force -Recurse -Directory | Select-Object -First 1
+          #   $path = $path + "/" + $contents.Name + "/bin/HostX64/x64/Lib.exe"
+          #   $path
+          #   & $path /DEF:sdrpp_core.def
+          run: C:/msys64/msys2_shell.cmd -defterm -here -no-start -mingw64 -c "x86_64-w64-mingw32-dlltool -d sdrpp_core.def -l sdrpp_core.lib"
         - name: Export GitHub Actions cache environment variables
           uses: actions/github-script@v7
           with:
