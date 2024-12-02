@@ -1,4 +1,11 @@
 #include <imgui.h>
+
+#ifdef _WIN32
+extern __declspec(dllimport) ImGuiContext* GImGui;
+#else
+extern ImGuiContext* GImGui;
+#endif
+
 #include <config.h>
 #include <core.h>
 #include <gui/style.h>
