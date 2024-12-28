@@ -40,7 +40,7 @@ static uint32_t block_interl_func(uint32_t K, uint32_t a, uint32_t i)
 
 void block_interleave(uint32_t K, uint32_t a, const uint8_t *in, uint8_t *out)
 {
-	int i;
+	uint32_t i;
 	for (i = 1; i <= K; i++) {
 		uint32_t k = block_interl_func(K, a, i);
 		DEBUGP("interl: i=%u, k=%u\n", i, k);
@@ -50,7 +50,7 @@ void block_interleave(uint32_t K, uint32_t a, const uint8_t *in, uint8_t *out)
 
 void block_deinterleave(uint32_t K, uint32_t a, const uint8_t *in, uint8_t *out)
 {
-	int i;
+	uint32_t i;
 	for (i = 1; i <= K; i++) {
 		uint32_t k = block_interl_func(K, a, i);
 		DEBUGP("deinterl: i=%u, k=%u\n", i, k);
@@ -62,7 +62,7 @@ void block_deinterleave(uint32_t K, uint32_t a, const uint8_t *in, uint8_t *out)
 void matrix_interleave(uint32_t lines, uint32_t columns,
 			const uint8_t *in, uint8_t *out)
 {
-	int i, j;
+	uint32_t i, j;
 
 	for (i = 0; i < columns; i++) {
 		for (j = 0; j < lines; j++)
@@ -73,7 +73,7 @@ void matrix_interleave(uint32_t lines, uint32_t columns,
 void matrix_deinterleave(uint32_t lines, uint32_t columns,
 			 const uint8_t *in, uint8_t *out)
 {
-	int i, j;
+	uint32_t i, j;
 
 	for (i = 0; i < columns; i++) {
 		for (j = 0; j < lines; j++)

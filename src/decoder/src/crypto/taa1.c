@@ -362,12 +362,12 @@ void ta82(uint8_t *lpSealedGck, uint8_t *lpGckVn, uint8_t *lpKey, uint8_t *lpUns
 
 void ta91(uint8_t *lpUnsealedGsko, uint8_t *lpGskoVn, uint8_t *lpKey, uint8_t *lpSealedGskoOut)
 {
-	return ta81(lpUnsealedGsko, lpGskoVn, lpUnsealedGsko + 10, lpKey, lpSealedGskoOut);
+	ta81(lpUnsealedGsko, lpGskoVn, lpUnsealedGsko + 10, lpKey, lpSealedGskoOut);
 }
 
 void ta92(uint8_t *lpSealedGsko, uint8_t *lpGskoVn, uint8_t *lpKey, uint8_t *lpUnsealedGskoOut, uint8_t *lpMfOut)
 {
-	return ta82(lpSealedGsko, lpGskoVn, lpKey, lpUnsealedGskoOut, lpMfOut, lpUnsealedGskoOut + 10);
+	ta82(lpSealedGsko, lpGskoVn, lpKey, lpUnsealedGskoOut, lpMfOut, lpUnsealedGskoOut + 10);
 }
 
 

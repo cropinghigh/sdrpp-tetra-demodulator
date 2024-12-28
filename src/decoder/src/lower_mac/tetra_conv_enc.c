@@ -201,7 +201,7 @@ static const struct puncturer *tetra_puncts[] = {
 };
 
 /* Puncture the mother code (in) and write 'len' symbols to out */
-int get_punctured_rate(enum tetra_rcpc_puncturer pu, uint8_t *in, int len, uint8_t *out)
+int get_punctured_rate(enum tetra_rcpc_puncturer pu, uint8_t *in, uint32_t len, uint8_t *out)
 {
 	const struct puncturer *punct;
 	uint32_t i, j, k;
@@ -226,7 +226,7 @@ int get_punctured_rate(enum tetra_rcpc_puncturer pu, uint8_t *in, int len, uint8
 }
 
 /* De-Puncture the 'len' type-3 bits (in) and write mother code to out */
-int tetra_rcpc_depunct(enum tetra_rcpc_puncturer pu, const uint8_t *in, int len, uint8_t *out)
+int tetra_rcpc_depunct(enum tetra_rcpc_puncturer pu, const uint8_t *in, uint32_t len, uint8_t *out)
 {
 	const struct puncturer *punct;
 	uint32_t i, j, k;
@@ -269,7 +269,7 @@ static const struct punct_test_param punct_test_params[] = {
 	{ 38, 80, 3, TETRA_RCPC_PUNCT_38_80 },		/* Speech class 2 in STCH */
 };
 
-static int mother_memcmp(const uint8_t *mother, const uint8_t *depunct, int len)
+static int mother_memcmp(const uint8_t *mother, const uint8_t *depunct, uint32_t len)
 {
 	unsigned int i, equal = 0;
 
@@ -339,7 +339,8 @@ static int test_one_punct(const struct punct_test_param *ptp)
 
 int tetra_punct_test(void)
 {
-	int i, rc;
+	long unsigned int i;
+	int rc;
 
 	for (i = 0; i < ARRAY_SIZE(punct_test_params); i++) {
 		rc = test_one_punct(&punct_test_params[i]);

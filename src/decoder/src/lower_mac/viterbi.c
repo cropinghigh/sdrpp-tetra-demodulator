@@ -6,7 +6,7 @@
 void viterbi_dec_sb1_wrapper(const uint8_t *in, uint8_t *out, unsigned int sym_count)
 {
 	int8_t vit_inp[864*4] = {0};
-	int i;
+	unsigned int i;
 
 	for (i = 0; i < sym_count*4; i++) {
 		switch (in[i]) {

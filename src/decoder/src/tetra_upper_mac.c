@@ -216,14 +216,14 @@ static int rx_resrc(struct tetra_tmvsap_prim *tmvp, struct tetra_mac_state *tms)
 	} else {
 		pdu_bits = rsd.macpdu_length * 8;	/* Length given */
 		msg->tail = msg->head + pdu_bits;
-		msg->len = msg->tail - msg->head;
+		msg->len = (uint16_t)(msg->tail - msg->head);
 	}
 
 	/* Strip fill bits */
 	if (rsd.fill_bits) {
 		int num_fill_bits = get_num_fill_bits(msg->l1h, msgb_l1len(msg));
 		msg->tail -= num_fill_bits;
-		msg->len = msg->tail - msg->head;
+		msg->len = (uint16_t)(msg->tail - msg->head);
 	}
 
 	/* Decrypt buffer if encrypted and key available */
@@ -347,7 +347,7 @@ static int rx_macfrag(struct tetra_tmvsap_prim *tmvp, struct tetra_mac_state *tm
 		if (fillbits_present) {
 			int num_fill_bits = get_num_fill_bits(msg->l1h, msgb_l1len(msg));
 			msg->tail -= num_fill_bits;
-			msg->len = msg->tail - msg->head;
+			msg->len = (uint16_t)(msg->tail - msg->head);
 		}
 
 		/* Decrypt (if required) */
@@ -396,11 +396,11 @@ static int rx_macend(struct tetra_tmvsap_prim *tmvp, struct tetra_mac_state *tms
 
 		/* Determine msg len, strip fill bits if any */
 		msg->tail = msg->head + length_indicator * 8;
-		msg->len = msg->tail - msg->head;
+		msg->len = (uint16_t)(msg->tail - msg->head);
 		if (fillbits_present) {
 			num_fill_bits = get_num_fill_bits(msg->l1h, msgb_l1len(msg));
 			msg->tail -= num_fill_bits;
-			msg->len = msg->tail - msg->head;
+			msg->len = (uint16_t)(msg->tail - msg->head);
 		}
 
 		/* Decrypt (if required) */

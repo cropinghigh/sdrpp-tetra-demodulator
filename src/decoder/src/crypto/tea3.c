@@ -60,8 +60,8 @@ static uint64_t tea3_compute_iv(uint32_t dwFrameNumbers)
 
 static uint8_t tea3_state_word_to_newbyte(uint16_t wSt, const uint16_t *awLut)
 {
-	uint8_t bSt0 = wSt;
-	uint8_t bSt1 = wSt >> 8;
+	uint8_t bSt0 = (uint8_t)(wSt&0xff);
+	uint8_t bSt1 = (uint8_t)((wSt >> 8)&0xff);
 
 	uint8_t bDist;
 	uint8_t bOut = 0;
@@ -102,8 +102,8 @@ void tea3(uint32_t dwFrameNumbers, uint8_t *lpKey, uint32_t dwNumKsBytes, uint8_
 	uint64_t qwIvReg = tea3_compute_iv(dwFrameNumbers);
 	memcpy(abKeyReg, lpKey, 10);
 
-	for (int i = 0; i < dwNumKsBytes; i++) {
-		for (int j = 0; j < dwNumSkipRounds; j++) {
+	for (unsigned int i = 0; i < dwNumKsBytes; i++) {
+		for (unsigned int j = 0; j < dwNumSkipRounds; j++) {
 			/* Step 1: Derive a non-linear feedback byte through sbox and feed back into key register */
 			uint8_t bSboxOut = g_abTea3Sbox[abKeyReg[7] ^ abKeyReg[2]] ^ abKeyReg[0];
 			memmove(abKeyReg, abKeyReg + 1, 9);

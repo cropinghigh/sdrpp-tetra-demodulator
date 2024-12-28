@@ -380,7 +380,7 @@ void tp_sap_udata_ind(enum tp_sap_data_type type, int blk_num, const uint8_t *bi
 	uint32_t offset = 0;
 	uint8_t *orig_head = msg->head; /* The true start of the timeslot */
 	uint8_t *orig_tail = msg->tail; /* The true end of the timeslot */
-	while (offset < tbp->type1_bits - 16) {
+	while (offset < (uint32_t) (tbp->type1_bits - 16)) {
 		/* send Rx time along with the TMV-UNITDATA.ind primitive */
 		memcpy(&tup->tdma_time, &tcd->time, sizeof(tup->tdma_time));
 
@@ -397,14 +397,14 @@ void tp_sap_udata_ind(enum tp_sap_data_type type, int blk_num, const uint8_t *bi
 		offset += pdu_bits;
 		msg->head = orig_head + offset;		/* New head is old head plus parsed len from prev msg */
 		msg->tail = orig_tail;			/* Restore original tail */
-		msg->len = msg->tail - msg->head;	/* Fixup len */
+		msg->len = (uint16_t)(msg->tail - msg->head);	/* Fixup len */
 		msg->l1h = msg->head;
 		msg->l2h = 0;
 		msg->l3h = 0;
 		msg->l4h = 0;
 	}
 
-out:
+// out:
 	// talloc_free(msg);
 	free(msg);
 	// talloc_free(ttp);

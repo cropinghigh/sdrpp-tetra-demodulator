@@ -566,8 +566,8 @@ static void _traceback_rec(struct vdecoder *dec,
  */
 static int traceback(struct vdecoder *dec, uint8_t *out, int term, int len)
 {
-	int i, j, sum, max = -1;
-	unsigned path, state = 0, state_scan;
+	int i, j, state_scan, sum, max = -1;
+	unsigned path, state = 0;
 
 	if (term == CONV_TERM_TAIL_BITING) {
 		for (i = 0; i < dec->trellis.num_states; i++) {
@@ -935,7 +935,8 @@ osmo_conv_decode_scan(struct osmo_conv_decoder *decoder,
 		for (s = 0; s < n_states; s++) {
 			/* Scan possible input bits */
 			for (b = 0; b < 2; b++) {
-				int nae, ov, e;
+				unsigned int nae;
+				int ov, e;
 				uint8_t m;
 
 				/* Next output and state */
@@ -1031,7 +1032,8 @@ osmo_conv_decode_flush(struct osmo_conv_decoder *decoder, const sbit_t *input)
 
 		/* Scan all state */
 		for (s = 0; s < n_states; s++) {
-			int nae, ov, e;
+			unsigned int nae;
+			int ov, e;
 			uint8_t m;
 
 			/* Next output and state */
@@ -1084,7 +1086,8 @@ osmo_conv_decode_get_best_end_state(struct osmo_conv_decoder *decoder)
 {
 	const struct osmo_conv_code *code = decoder->code;
 
-	int min_ae, min_state;
+	unsigned int min_ae;
+	int min_state;
 	int s;
 
 	/* If flushed, we _know_ the end state */

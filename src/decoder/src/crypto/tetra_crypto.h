@@ -91,9 +91,9 @@ struct tetra_crypto_database {
 extern struct tetra_crypto_database *tcdb;
 
 struct tetra_crypto_state {
-	int mnc;			/* Network info for selecting keys */
-	int mcc;			/* Network info for selecting keys */
-	int cck_id;			/* CCK or SCK id used on network (from SYSINFO) */
+	uint32_t mnc;			/* Network info for selecting keys */
+	uint32_t mcc;			/* Network info for selecting keys */
+	uint32_t cck_id;			/* CCK or SCK id used on network (from SYSINFO) */
 	int hn;				/* Hyperframe number for IV (from SYSINFO) */
 	int la;				/* location area for TB5 */
 	int cn;				/* carrier number for TB5. WARNING: only set correctly if tuned to main control channel */
@@ -117,7 +117,7 @@ bool decrypt_mac_element(struct tetra_crypto_state *tcs, struct tetra_tmvsap_pri
 bool decrypt_voice_timeslot(struct tetra_crypto_state *tcs, struct tetra_tdma_time *tdma_time, int16_t *type1_bits);
 
 /* Key selection and crypto state management */
-struct tetra_netinfo *get_network_info(int mcc, int mnc);
+struct tetra_netinfo *get_network_info(uint32_t mcc, uint32_t mnc);
 struct tetra_key *get_ksg_key(struct tetra_crypto_state *tcs, int addr);
 void update_current_network(struct tetra_crypto_state *tcs, int mcc, int mnc);
 void update_current_cck(struct tetra_crypto_state *tcs);

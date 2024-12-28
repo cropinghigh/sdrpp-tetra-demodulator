@@ -155,7 +155,7 @@ uint32_t tea_build_iv(struct tetra_tdma_time *tm, uint16_t hn, uint8_t dir)
 	assert(1 <= tm->fn  && tm->fn  <= 18);
 	assert(1 <= tm->mn  && tm->mn  <= 60);
 	assert(0 <= tm->hn  && tm->hn  <= 0xFFFF);
-	assert(0 <= dir && dir <= 1); // 0 = downlink, 1 = uplink
+	assert(0 < dir && dir <= 1); // 0 = downlink, 1 = uplink
 	return ((tm->tn - 1) | (tm->fn << 2) | (tm->mn << 7) | ((hn & 0x7FFF) << 13) | (dir << 28));
 }
 
@@ -317,8 +317,8 @@ int load_keystore(char *tetra_keyfile)
 	 *   - key_num: SCK_VN or group key number depending on type, currently unimplemented
 	 *   - key: 80-bit key hex string
 	 */
-
-	int i, c;
+	unsigned int i;
+	int c;
 	char buf[1000]; // max line len
 	FILE *fp;
 
@@ -408,9 +408,9 @@ int load_keystore(char *tetra_keyfile)
 	return 0;
 }
 
-struct tetra_key *get_key_by_addr(struct tetra_crypto_state *tcs, int addr, enum tetra_key_type key_type)
+struct tetra_key *get_key_by_addr(struct tetra_crypto_state *tcs, uint32_t addr, enum tetra_key_type key_type)
 {
-	for (int i = 0; i < tcdb->num_keys; i++) {
+	for (unsigned int i = 0; i < tcdb->num_keys; i++) {
 		struct tetra_key *key = &tcdb->keys[i];
 		if (key->mnc == tcs->mnc &&
 				key->mcc == tcs->mcc &&
@@ -451,7 +451,7 @@ void update_current_network(struct tetra_crypto_state *tcs, int mcc, int mnc)
 
 	/* Network changed, update reference to current network */
 	tcs->network = 0;
-	for (int i = 0; i < tcdb->num_nets; i++) {
+	for (unsigned int i = 0; i < tcdb->num_nets; i++) {
 		struct tetra_netinfo *network = &tcdb->nets[i];
 		if (network->mnc == tcs->mnc && network->mcc == tcs->mcc) {
 			tcs->network = network;
@@ -468,7 +468,7 @@ void update_current_cck(struct tetra_crypto_state *tcs)
 	// printf("\ntetra_crypto: update_current_cck invoked cck %d mcc %d mnc %d\n", tcs->cck_id, tcs->mcc, tcs->mnc);
 	tcs->cck = 0;
 
-	for (int i = 0; i < tcdb->num_keys; i++) {
+	for (unsigned int i = 0; i < tcdb->num_keys; i++) {
 		struct tetra_key *key = &tcdb->keys[i];
 		/* TODO FIXME consider selecting CCK or SCK key type based on network config */
 		if (key->mcc == tcs->mcc && key->mnc == tcs->mnc && key->key_num == tcs->cck_id) {
@@ -481,9 +481,9 @@ void update_current_cck(struct tetra_crypto_state *tcs)
 	}
 }
 
-struct tetra_netinfo *get_network_info(int mcc, int mnc)
+struct tetra_netinfo *get_network_info(uint32_t mcc, uint32_t mnc)
 {
-	for (int i = 0; i < tcdb->num_nets; i++) {
+	for (unsigned int i = 0; i < tcdb->num_nets; i++) {
 		if (tcdb->nets[i].mcc == mcc && tcdb->nets[i].mnc == mnc)
 			return &tcdb->nets[i];
 	}

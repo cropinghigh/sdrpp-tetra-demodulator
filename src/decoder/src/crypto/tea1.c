@@ -58,8 +58,8 @@ uint64_t tea1_expand_iv(uint32_t dwShortIv)
 
 uint8_t tea1_state_word_to_newbyte(uint16_t wSt, const uint16_t *awLut)
 {
-	uint8_t bSt0 = wSt;
-	uint8_t bSt1 = wSt >> 8;
+	uint8_t bSt0 = (uint8_t)(wSt&0xff);
+	uint8_t bSt1 = (uint8_t)((wSt >> 8)&0xff);
 	uint8_t bDist;
 	uint8_t bOut = 0;
 
@@ -104,8 +104,8 @@ void tea1_inner(uint64_t qwIvReg, uint32_t dwKeyReg, uint32_t dwNumKsBytes, uint
 {
 	uint32_t dwNumSkipRounds = 54;
 
-	for (int i = 0; i < dwNumKsBytes; i++) {
-		for (int j = 0; j < dwNumSkipRounds; j++) {
+	for (unsigned int i = 0; i < dwNumKsBytes; i++) {
+		for (unsigned int j = 0; j < dwNumSkipRounds; j++) {
 			/* Step 1: Derive a non-linear feedback byte through sbox and feed back into key register */
 			uint8_t bSboxOut = g_abTea1Sbox[((dwKeyReg >> 24) ^ dwKeyReg) & 0xff];
 			dwKeyReg = (dwKeyReg << 8) | bSboxOut;

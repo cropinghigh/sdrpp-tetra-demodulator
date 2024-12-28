@@ -213,7 +213,7 @@ int build_sync_c_d_burst(uint8_t *buf, const uint8_t *sb, const uint8_t *bb, con
 	put_phase_adj_bits(buf, HC, hc);
 	put_phase_adj_bits(buf, HD, hd);
 
-	return cur - buf;
+	return (int)(cur - buf);
 }
 
 /* 9.4.4.2.5 Normal continuous downlink burst */
@@ -265,7 +265,7 @@ int build_norm_c_d_burst(uint8_t *buf, const uint8_t *bkn1, const uint8_t *bb, c
 	put_phase_adj_bits(buf, HA, ha);
 	put_phase_adj_bits(buf, HB, hb);
 
-	return cur - buf;
+	return (int)(cur - buf);
 }
 
 int tetra_find_train_seq(const uint8_t *in, unsigned int end_of_in,
@@ -304,36 +304,36 @@ int tetra_find_train_seq(const uint8_t *in, unsigned int end_of_in,
 		if (!match)
 			continue;
 
-		int remain_len = (in + end_of_in) - cur;
+		unsigned remain_len = (unsigned int)((in + end_of_in) - cur);
 
 		if (mask_of_train_seq & (1 << TETRA_TRAIN_SYNC) &&
 		    remain_len >= sizeof(y_bits) &&
 		    !memcmp(cur, y_bits, sizeof(y_bits))) {
-			*offset = (cur - in);
+			*offset = (unsigned int)(cur - in);
 			return TETRA_TRAIN_SYNC;
 		}
 		if (mask_of_train_seq & (1 << TETRA_TRAIN_NORM_1) &&
 		    remain_len >= sizeof(n_bits) &&
 		    !memcmp(cur, n_bits, sizeof(n_bits))) {
-			*offset = (cur - in);
+			*offset = (unsigned int)(cur - in);
 			return TETRA_TRAIN_NORM_1;
 		}
 		if (mask_of_train_seq & (1 << TETRA_TRAIN_NORM_2) &&
 		    remain_len >= sizeof(p_bits) &&
 		    !memcmp(cur, p_bits, sizeof(p_bits))) {
-			*offset = (cur - in);
+			*offset = (unsigned int)(cur - in);
 			return TETRA_TRAIN_NORM_2;
 		}
 		if (mask_of_train_seq & (1 << TETRA_TRAIN_NORM_3) &&
 		    remain_len >= sizeof(q_bits) &&
 		    !memcmp(cur, q_bits, sizeof(q_bits))) {
-			*offset = (cur - in);
+			*offset = (unsigned int)(cur - in);
 			return TETRA_TRAIN_NORM_3;
 		}
 		if (mask_of_train_seq & (1 << TETRA_TRAIN_EXT) &&
 		    remain_len >= sizeof(x_bits) &&
 		    !memcmp(cur, x_bits, sizeof(x_bits))) {
-			*offset = (cur - in);
+			*offset = (unsigned int)(cur - in);
 			return TETRA_TRAIN_EXT;
 		}
 	}

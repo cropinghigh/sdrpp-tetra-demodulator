@@ -24,11 +24,11 @@ enum tetra_rcpc_puncturer {
 };
 
 /* Puncture the mother code (in) and write 'len' symbols to out */
-int get_punctured_rate(enum tetra_rcpc_puncturer pu, uint8_t *in, int len, uint8_t *out);
+int get_punctured_rate(enum tetra_rcpc_puncturer pu, uint8_t *in, uint32_t len, uint8_t *out);
 
 
 /* De-Puncture the 'len' type-3 bits (in) and write mother code to out */
-int tetra_rcpc_depunct(enum tetra_rcpc_puncturer pu, const uint8_t *in, int len, uint8_t *out);
+int tetra_rcpc_depunct(enum tetra_rcpc_puncturer pu, const uint8_t *in, uint32_t len, uint8_t *out);
 
 /* Self-test the puncturing/de-puncturing */
 int tetra_punct_test(void);

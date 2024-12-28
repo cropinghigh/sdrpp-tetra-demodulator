@@ -103,7 +103,7 @@ struct msgb *msgb_alloc(uint16_t size, const char *name);
 static inline unsigned int msgb_l1len(const struct msgb *msgb)
 {
 	assert(msgb->l1h);
-	return msgb->tail - (uint8_t *)msgb_l1(msgb);
+	return (unsigned int) (msgb->tail - (uint8_t *)msgb_l1(msgb));
 }
 
 /*! determine length of L2 message
@@ -116,7 +116,7 @@ static inline unsigned int msgb_l1len(const struct msgb *msgb)
 static inline unsigned int msgb_l2len(const struct msgb *msgb)
 {
 	assert(msgb->l2h);
-	return msgb->tail - (uint8_t *)msgb_l2(msgb);
+	return (unsigned int) (msgb->tail - (uint8_t *)msgb_l2(msgb));
 }
 
 /*! determine length of L3 message
@@ -129,7 +129,7 @@ static inline unsigned int msgb_l2len(const struct msgb *msgb)
 static inline unsigned int msgb_l3len(const struct msgb *msgb)
 {
 	assert(msgb->l3h);
-	return msgb->tail - (uint8_t *)msgb_l3(msgb);
+	return (unsigned int) (msgb->tail - (uint8_t *)msgb_l3(msgb));
 }
 
 /*! determine length of L4 message
@@ -142,7 +142,7 @@ static inline unsigned int msgb_l3len(const struct msgb *msgb)
 static inline unsigned int msgb_l4len(const struct msgb *msgb)
 {
 	assert(msgb->l4h);
-	return msgb->tail - (uint8_t *)msgb_l4(msgb);
+	return (unsigned int) (msgb->tail - (uint8_t *)msgb_l4(msgb));
 }
 
 /*! determine the length of the header
@@ -154,12 +154,12 @@ static inline unsigned int msgb_l4len(const struct msgb *msgb)
  */
 static inline unsigned int msgb_headlen(const struct msgb *msgb)
 {
-	return msgb->len - msgb->data_len;
+	return (unsigned int) (msgb->len - msgb->data_len);
 }
 
 static inline int msgb_tailroom(const struct msgb *msgb)
 {
-	return (msgb->head + msgb->data_len) - msgb->tail;
+	return (unsigned int) ((msgb->head + msgb->data_len) - msgb->tail);
 }
 
 /*! append data to end of message buffer

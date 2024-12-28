@@ -132,7 +132,7 @@ int macpdu_decode_chan_alloc(struct tetra_chan_alloc_decoded *cad, const uint8_t
 			cur += 16;
 		cur++;
 	}
-	return cur - bits;
+	return (int)(cur - bits);
 }
 
 /* According to table 21.90 */
@@ -243,7 +243,7 @@ int macpdu_decode_resource(struct tetra_resrc_decoded *rsd, const uint8_t *bits,
 		// We can only determine length if the frame is unencrypted
 		cur += macpdu_decode_chan_alloc(&rsd->cad, cur);
 
-	return cur - bits;
+	return (int)(cur - bits);
 }
 
 static void decode_access_field(struct tetra_access_field *taf, uint8_t field)

@@ -27,6 +27,8 @@ namespace dsp {
             free(tms->t_display_st);
             free(tms->tcs);
             free(tms);
+            
+            free(conv_data);
             // talloc_free(trs);
             // talloc_free(tms->t_display_st);
             // talloc_free(tms->tcs);
@@ -64,6 +66,9 @@ namespace dsp {
             memset(trs, 0, sizeof(struct tetra_rx_state));
             tms->fragslots = (struct fragslot*)malloc(sizeof(struct fragslot)*FRAGSLOT_NR_SLOTS);
             memset(tms->fragslots, 0, sizeof(struct fragslot)*FRAGSLOT_NR_SLOTS);
+
+            conv_data = (float*)malloc(sizeof(float)*STREAM_BUFFER_SIZE);
+            memset(conv_data, 0, sizeof(float)*STREAM_BUFFER_SIZE);
 
 
             trs->burst_cb_priv = tms;
@@ -210,19 +215,20 @@ namespace dsp {
 
         static void put_voice_data(void* ctx, int count, int16_t* data) {
             osmotetradec* _this = (osmotetradec*) ctx;
-            float conv_data[STREAM_BUFFER_SIZE];
-            volk_16i_s32f_convert_32f(conv_data, data, 32768.0f, count);
+
+            volk_16i_s32f_convert_32f(_this->conv_data, data, 32768.0f, count);
             if(_this->out_tmp_buff.getWritable(false) >= count) {
-                _this->out_tmp_buff.write(conv_data, count);
+                _this->out_tmp_buff.write(_this->conv_data, count);
             }
         }
 
     private:
         int inSymsCtr = 0;
         int outSymsCtr = 0;
-        void *tetra_tall_ctx;
-        struct tetra_rx_state *trs;
-        struct tetra_mac_state *tms;
+        void *tetra_tall_ctx = NULL;
+        struct tetra_rx_state *trs = NULL;
+        struct tetra_mac_state *tms = NULL;
+        float *conv_data = NULL;
         buffer::RingBuffer<float> out_tmp_buff;
     };
 
