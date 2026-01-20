@@ -115,3 +115,36 @@ jobs:
           with:
               name: tetra_demodulator_win_pdb
               path: build/RelWithDebInfo/tetra_demodulator.pdb
+    build_macos:
+        runs-on: macos-latest
+        steps:
+        - name: Repo checkout
+          uses: actions/checkout@v4
+        - name: Install dependencies
+          run: brew install talloc glfw glew volk fftw
+        - name: Get SDR++ master source
+          run: 'wget https://github.com/AlexandreRouma/SDRPlusPlus/archive/refs/heads/master.tar.gz && tar -zxvf master.tar.gz'
+        - name: Get SDR++ nightly lib
+          uses: dsaltares/fetch-gh-release-asset@master
+          with:
+            repo: 'AlexandreRouma/SDRPlusPlus'
+            version: 'tags/nightly'
+            file: 'sdrpp_macos_arm.zip'
+            token: ${{ secrets.GITHUB_TOKEN }}
+        - name: Unpack SDR++ lib
+          run: 'unzip sdrpp_macos_arm.zip'
+        - name: Download ETSI codec
+          run: |
+            cd src/decoder/etsi_codec-patches
+            sed 's/md5sum/md5 -r/' download_and_patch.sh > download_and_patch_mac.sh
+            chmod +x download_and_patch_mac.sh
+            ./download_and_patch_mac.sh
+        - name: Cmake
+          run: 'mkdir build && cd build && cmake .. -DSDRPP_MODULE_CMAKE="$GITHUB_WORKSPACE/.github/workflows/sdrpp_module_macos.cmake" -DSDRPP_CORE_ROOT="$GITHUB_WORKSPACE/SDRPlusPlus-master/core/src" -DSDRPP_LIB_ROOT="$GITHUB_WORKSPACE/SDR++.app/Contents/Frameworks" -DCMAKE_PREFIX_PATH="/opt/homebrew" -DCMAKE_BUILD_TYPE=Release'
+        - name: Make
+          run: 'cd build && make -j$(sysctl -n hw.ncpu)'
+        - name: Upload library
+          uses: actions/upload-artifact@v4
+          with:
+              name: tetra_demodulator_macos
+              path: ./build/tetra_demodulator.dylib
