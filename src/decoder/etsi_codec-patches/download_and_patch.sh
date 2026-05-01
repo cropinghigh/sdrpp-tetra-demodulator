@@ -1,6 +1,7 @@
 #!/bin/sh
 
 URL=https://www.etsi.org/deliver/etsi_en/300300_300399/30039502/01.03.01_60/en_30039502v010301p0.zip
+HTTPURL=http://www.etsi.org/deliver/etsi_en/300300_300399/30039502/01.03.01_60/en_30039502v010301p0.zip
 MD5_EXP=a8115fe68ef8f8cc466f4192572a1e3e
 LOCAL_FILE=en_30039502v010301p0.zip
 
@@ -26,8 +27,15 @@ echo Checking MD5SUM ...
 if [ $MD5 != $MD5_EXP ]; then
 	FILESIZE=$(stat -c%s "$LOCAL_FILE")
 	echo "MD5sum of ETSI reference codec file doesn't match($MD5, $MD5_EXP). File size is $FILESIZE"
-	hexdump -C $LOCAL_FILE
-	exit 1
+	rm $LOCAL_FILE
+	curl -kLSs $HTTPURL -o $LOCAL_FILE
+	MD5=`md5sum $LOCAL_FILE | awk '{ print $1 }'`
+	if [ $MD5 != $MD5_EXP ]; then
+		FILESIZE=$(stat -c%s "$LOCAL_FILE")
+		echo "MD5sum of HTTP ETSI reference codec file also doesn't match($MD5, $MD5_EXP). File size is $FILESIZE"
+		cat $LOCAL_FILE
+		exit 1
+	fi
 fi
 
 echo Unpacking ZIP ...
