@@ -27,6 +27,7 @@
 
 #include <inttypes.h>
 #include <stdbool.h>
+#include <stddef.h>
 
 #include "../tetra_prim.h"
 #include "../tetra_tdma.h"
@@ -86,9 +87,9 @@ struct tetra_crypto_database {
 	struct tetra_key *keys;
 	uint32_t num_nets;
 	struct tetra_netinfo *nets;
-	int nets_cnt;
+	uint32_t keys_capacity;
+	uint32_t nets_capacity;
 };
-extern struct tetra_crypto_database *tcdb;
 
 struct tetra_crypto_state {
 	uint32_t mnc;			/* Network info for selecting keys */
@@ -100,6 +101,7 @@ struct tetra_crypto_state {
 	int cc;				/* colour code for TB5 */
 	struct tetra_netinfo *network;	/* pointer to network info struct loaded from file */
 	struct tetra_key *cck;		/* pointer to CCK or SCK for this network and version (from SYSINFO) */
+	struct tetra_crypto_database *db; /* database owned by this decoder instance */
 };
 
 const char *tetra_get_key_type_name(enum tetra_key_type);
@@ -108,7 +110,15 @@ const char *tetra_get_security_class_name(uint8_t pdut);
 
 /* Key loading / unloading */
 void tetra_crypto_state_init(struct tetra_crypto_state *tcs);
-int load_keystore(char *filename);
+void tetra_crypto_db_init(struct tetra_crypto_database *db);
+void tetra_crypto_db_clear(struct tetra_crypto_database *db);
+int tetra_crypto_db_load(struct tetra_crypto_database *db, const char *filename,
+			 char *error, size_t error_len);
+int tetra_crypto_db_add_or_replace(struct tetra_crypto_database *db,
+				   const struct tetra_netinfo *network,
+				   const struct tetra_key *key,
+				   char *error, size_t error_len);
+void tetra_crypto_refresh(struct tetra_crypto_state *tcs);
 
 /* Keystream generation and decryption functions */
 uint32_t tea_build_iv(struct tetra_tdma_time *tm, uint16_t hn, uint8_t dir);
@@ -117,7 +127,7 @@ bool decrypt_mac_element(struct tetra_crypto_state *tcs, struct tetra_tmvsap_pri
 bool decrypt_voice_timeslot(struct tetra_crypto_state *tcs, struct tetra_tdma_time *tdma_time, int16_t *type1_bits);
 
 /* Key selection and crypto state management */
-struct tetra_netinfo *get_network_info(uint32_t mcc, uint32_t mnc);
+struct tetra_netinfo *get_network_info(struct tetra_crypto_database *db, uint32_t mcc, uint32_t mnc);
 struct tetra_key *get_ksg_key(struct tetra_crypto_state *tcs, int addr);
 void update_current_network(struct tetra_crypto_state *tcs, int mcc, int mnc);
 void update_current_cck(struct tetra_crypto_state *tcs);

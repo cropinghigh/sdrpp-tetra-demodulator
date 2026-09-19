@@ -295,6 +295,15 @@ struct tetra_display_state {
 	bool reg_mandatory;
 };
 
+struct tetra_traffic_crypto_state {
+	bool assigned;
+	bool encrypted;
+	bool decrypt_attempted;
+	bool decrypt_succeeded;
+	uint8_t encryption_mode;
+	uint8_t usage_marker;
+};
+
 struct tetra_mac_state {
 	// struct llist_head voice_channels;
 	struct {
@@ -319,6 +328,7 @@ struct tetra_mac_state {
 	void* put_voice_data_ctx;
 	int last_frame;
 	int curr_active_timeslot;
+	struct tetra_traffic_crypto_state traffic_crypto[4];
 	
 	struct fragslot* fragslots;
 };

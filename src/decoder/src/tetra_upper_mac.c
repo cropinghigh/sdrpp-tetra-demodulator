@@ -202,11 +202,14 @@ static int rx_resrc(struct tetra_tmvsap_prim *tmvp, struct tetra_mac_state *tms)
 	struct tetra_resrc_decoded rsd;
 	struct msgb *fragmsgb;
 	struct tetra_key *key = 0;
+	bool resource_encrypted;
+	bool decrypt_succeeded = false;
 	int tmpdu_offset, slot;
 	int pdu_bits; /* Full length of pdu, including fill bits */
 
 	memset(&rsd, 0, sizeof(rsd));
 	tmpdu_offset = macpdu_decode_resource(&rsd, msg->l1h, 0);
+	resource_encrypted = rsd.encryption_mode > 0;
 
 	if (rsd.macpdu_length == MACPDU_LEN_2ND_STOLEN) {
 		pdu_bits = -1;				/* Fills slot */
@@ -227,16 +230,17 @@ static int rx_resrc(struct tetra_tmvsap_prim *tmvp, struct tetra_mac_state *tms)
 	}
 
 	/* Decrypt buffer if encrypted and key available */
-	if (rsd.is_encrypted && tcdb->num_keys) {
+	if (rsd.is_encrypted && tcs->db && tcs->db->num_keys) {
 		decrypt_identity(tcs, &rsd.addr);
 		key = get_ksg_key(tcs, rsd.addr.ssi);
 
 		if (key) {
-			rsd.is_encrypted = !decrypt_mac_element(tcs, tmvp, key, msgb_l1len(msg), tmpdu_offset);
-			if (rsd.chan_alloc_pres) {
-				// Re-decode the channel allocation element to get accurate L2 start
-				tmpdu_offset += macpdu_decode_chan_alloc(&rsd.cad, msg->l1h + tmpdu_offset);
-			}
+			decrypt_succeeded = decrypt_mac_element(tcs, tmvp, key, msgb_l1len(msg), tmpdu_offset);
+			rsd.is_encrypted = !decrypt_succeeded;
+			if (decrypt_succeeded)
+				/* Re-decode the complete element: chan_alloc_pres itself may have
+				 * been encrypted, so its pre-decryption value cannot be trusted. */
+				tmpdu_offset = macpdu_decode_resource(&rsd, msg->l1h, 1);
 		}
 	}
 
@@ -253,6 +257,20 @@ static int rx_resrc(struct tetra_tmvsap_prim *tmvp, struct tetra_mac_state *tms)
 			// printf(" ChanAlloc=%s", tetra_alloc_dump(&rsd.cad, tms));
 		} else {
 			// printf(" ChanAlloc=ENCRYPTED");
+		}
+	}
+	if (rsd.chan_alloc_pres && !rsd.is_encrypted) {
+		for (unsigned int ts = 0; ts < 4; ts++) {
+			/* The four-bit allocation is a timeslot bitmap, MSB is TN1. */
+			if (rsd.cad.timeslot & (1u << (3 - ts))) {
+				struct tetra_traffic_crypto_state *traffic = &tms->traffic_crypto[ts];
+				traffic->assigned = true;
+				traffic->encrypted = resource_encrypted;
+				traffic->encryption_mode = rsd.encryption_mode;
+				traffic->usage_marker = rsd.addr.usage_marker;
+				traffic->decrypt_attempted = resource_encrypted;
+				traffic->decrypt_succeeded = !resource_encrypted || decrypt_succeeded;
+			}
 		}
 	}
 

@@ -27,6 +27,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+#include <stdarg.h>
+#include <ctype.h>
+#include <errno.h>
 
 // #include <osmocom/core/utils.h>
 
@@ -39,8 +42,6 @@
 #include "tea3.h"
 #include "taa1.h"
 
-
-struct tetra_crypto_database _tcdb, *tcdb = &_tcdb;
 
 static const struct value_string tetra_key_types[] = {
 	{ KEYTYPE_UNDEFINED,		"UNDEFINED" },
@@ -92,34 +93,64 @@ const char *tetra_get_security_class_name(uint8_t pdut)
 
 void tetra_crypto_state_init(struct tetra_crypto_state *tcs)
 {
-	/* Initialize network info fields to -1 to designate unknown */
-	tcs->mnc = -1;
-	tcs->mcc = -1;
-	tcs->cck_id = -1;
-	tcs->hn =  -1;
-	tcs->la =  -1;
-	tcs->cc =  -1;
-
-	/* Initialize database key/network pointers to zero */
-	tcs->cck = 0;
-	tcs->network = 0;
+	memset(tcs, 0, sizeof(*tcs));
+	tcs->mnc = UINT32_MAX;
+	tcs->mcc = UINT32_MAX;
+	tcs->cck_id = UINT32_MAX;
+	tcs->hn = -1;
+	tcs->la = -1;
+	tcs->cn = -1;
+	tcs->cc = -1;
 }
 
-void tetra_crypto_db_init(void)
+void tetra_crypto_db_init(struct tetra_crypto_database *db)
 {
-	/* Initialize tetra_crypto_database */
-	tcdb->num_keys = 0;
-	tcdb->num_nets = 0;
-	tcdb->keys = malloc(sizeof(struct tetra_key)*TCDB_ALLOC_BLOCK_SIZE);
-	tcdb->nets = malloc(sizeof(struct tetra_netinfo)*TCDB_ALLOC_BLOCK_SIZE);
-	tcdb->nets_cnt = TCDB_ALLOC_BLOCK_SIZE;
-	// tcdb->keys = talloc_zero_array(NULL, struct tetra_key, TCDB_ALLOC_BLOCK_SIZE);
-	// tcdb->nets = talloc_zero_array(NULL, struct tetra_netinfo, TCDB_ALLOC_BLOCK_SIZE);
+	memset(db, 0, sizeof(*db));
+}
 
-	if (!tcdb->keys || !tcdb->nets) {
-		fprintf(stderr, "couldn't allocate memory for tetra_crypto_database\n");
-		exit(1);
+void tetra_crypto_db_clear(struct tetra_crypto_database *db)
+{
+	if (!db)
+		return;
+	if (db->keys) {
+		memset(db->keys, 0, sizeof(*db->keys) * db->keys_capacity);
+		free(db->keys);
 	}
+	free(db->nets);
+	memset(db, 0, sizeof(*db));
+}
+
+static void set_error(char *error, size_t error_len, const char *fmt, ...)
+{
+	va_list ap;
+	if (!error || !error_len)
+		return;
+	va_start(ap, fmt);
+	vsnprintf(error, error_len, fmt, ap);
+	va_end(ap);
+}
+
+static bool supported_ksg(enum tetra_ksg_type type)
+{
+	return type == KSG_TEA1 || type == KSG_TEA2 || type == KSG_TEA3;
+}
+
+static int reserve_array(void **array, uint32_t *capacity, uint32_t count,
+			 size_t element_size)
+{
+	void *next;
+	uint32_t capacity_next;
+	if (count < *capacity)
+		return 0;
+	capacity_next = *capacity ? *capacity + TCDB_ALLOC_BLOCK_SIZE : TCDB_ALLOC_BLOCK_SIZE;
+	next = realloc(*array, element_size * capacity_next);
+	if (!next)
+		return -1;
+	memset((char *)next + element_size * *capacity, 0,
+	       element_size * (capacity_next - *capacity));
+	*array = next;
+	*capacity = capacity_next;
+	return 0;
 }
 
 char *dump_key(struct tetra_key *k)
@@ -154,8 +185,7 @@ uint32_t tea_build_iv(struct tetra_tdma_time *tm, uint16_t hn, uint8_t dir)
 	assert(1 <= tm->tn  && tm->tn  <= 4);
 	assert(1 <= tm->fn  && tm->fn  <= 18);
 	assert(1 <= tm->mn  && tm->mn  <= 60);
-	assert(0 <= tm->hn  && tm->hn  <= 0xFFFF);
-	assert(0 < dir && dir <= 1); // 0 = downlink, 1 = uplink
+	assert(dir <= 1); /* 0 = downlink, 1 = uplink */
 	return ((tm->tn - 1) | (tm->fn << 2) | (tm->mn << 7) | ((hn & 0x7FFF) << 13) | (dir << 28));
 }
 
@@ -169,6 +199,10 @@ static bool generate_keystream(struct tetra_crypto_state *tcs, struct tetra_key 
 	// uint8_t ks_bytes[num_bytes];
 	//I HATE FUCKING MSVC
 	uint8_t* ks_bytes = malloc(num_bytes);
+	if (!ks_bytes || tcs->hn < 0) {
+		free(ks_bytes);
+		return false;
+	}
 	uint32_t iv = tea_build_iv(t, tcs->hn, 0);
 
 	/* Compute ECK from net info and CK */
@@ -214,13 +248,16 @@ static bool generate_keystream(struct tetra_crypto_state *tcs, struct tetra_key 
 
 bool decrypt_identity(struct tetra_crypto_state *tcs, struct tetra_addr *addr)
 {
+	(void)tcs;
+	(void)addr;
 	/* TODO FIXME implement TA61 decryption */
 	return false;
 }
 
 bool decrypt_mac_element(struct tetra_crypto_state *tcs, struct tetra_tmvsap_prim *tmvp, struct tetra_key *key, int l1_len, int tmpdu_offset)
 {
-	if (!key || l1_len - tmpdu_offset <= 0)
+	if (!tcs || !tmvp || !key || tmpdu_offset < 0 || l1_len <= 0 ||
+	    tmpdu_offset >= l1_len)
 		return false;
 
 	if (tcs->cn < 0 || tcs->la < 0 || tcs->cc < 0) {
@@ -251,6 +288,8 @@ bool decrypt_mac_element(struct tetra_crypto_state *tcs, struct tetra_tmvsap_pri
 	// uint8_t *ct_start = tmvp->msg + tmpdu_offset;
 	// uint8_t ks[ks_num_bits];
 	uint8_t* ks = malloc(ks_num_bits);
+	if (!ks)
+		return false;
 	if (!generate_keystream(tcs, key, tdma_time, ks_num_bits, ks)) {
 		free(ks);
 		return false;
@@ -284,6 +323,8 @@ bool decrypt_voice_timeslot(struct tetra_crypto_state *tcs, struct tetra_tdma_ti
 	int ks_num_bits = 137*2; // two half slots of voice
 	// uint8_t ks[ks_num_bits];
 	uint8_t* ks = malloc(ks_num_bits);
+	if (!ks)
+		return false;
 	if (!generate_keystream(tcs, key, tdma_time, ks_num_bits, ks)) {
 		free(ks);
 		return false;
@@ -291,8 +332,16 @@ bool decrypt_voice_timeslot(struct tetra_crypto_state *tcs, struct tetra_tdma_ti
 
 	/* Apply keystream */
 	for (int i = 0; i < 137; i++) {
-		type1_block[i + 1] = type1_block[i + 1] ^ ks[i];
-		type1_block[i + 139] = type1_block[i + 139] ^ ks[i + 137];
+		if (ks[i]) {
+			int16_t *bit = &type1_block[i + 1];
+			/* Channel_Decoding may emit either hard 0/1 bits or ETSI
+			 * soft decisions. XOR the former and reverse the latter. */
+			*bit = (*bit == 0 || *bit == 1) ? (*bit ^ 1) : -*bit;
+		}
+		if (ks[i + 137]) {
+			int16_t *bit = &type1_block[i + 139];
+			*bit = (*bit == 0 || *bit == 1) ? (*bit ^ 1) : -*bit;
+		}
 	}
 
 	// printf("tetra_crypto: addr %8d -> key %4d, time %5d/%s, decrypted voice\n",
@@ -301,117 +350,177 @@ bool decrypt_voice_timeslot(struct tetra_crypto_state *tcs, struct tetra_tdma_ti
 	return true;
 }
 
-int load_keystore(char *tetra_keyfile)
+static int parse_hex_key(const char *text, uint8_t key[16])
 {
-	/* Keystore file:
-	 * Each line contains network or key definition.
-	 * Lines starting with # are ignored as comments.
-	 *
-	 *   network mcc 123 mnc 456 ksg_type 1 security_class 2
-	 *   - ksg_type: decimal, see enum tetra_ksg_type
-	 *   - security_class: 2 for SCK, 3 for CCK+DCK
-	 *
-	 *   key mcc 123 mnc 456 addr 00000000 key_type 1 key_num 002 key 1234deadbeefcafebabe
-	 *   - addr: decimal, only relevant for DCK/MGCK/GCK, also, currently unimplemented
-	 *   - key_type: 1 CCK/SCK, 2 DCK, 3 MGCK, 4 GCK
-	 *   - key_num: SCK_VN or group key number depending on type, currently unimplemented
-	 *   - key: 80-bit key hex string
-	 */
-	unsigned int i;
-	int c;
-	char buf[1000]; // max line len
-	FILE *fp;
-
-	tetra_crypto_db_init();
-
-	fp = fopen(tetra_keyfile, "r");
-	if (!fp) {
-		printf("tetra_crypto: cannot read keyfile\n");
-		exit(1);
+	if (strlen(text) != 20)
+		return -1;
+	memset(key, 0, 16);
+	for (unsigned int i = 0; i < 10; i++) {
+		char byte_text[3] = { text[i * 2], text[i * 2 + 1], 0 };
+		char *end;
+		unsigned long value;
+		if (!isxdigit((unsigned char)byte_text[0]) ||
+		    !isxdigit((unsigned char)byte_text[1]))
+			return -1;
+		value = strtoul(byte_text, &end, 16);
+		if (*end || value > 0xff)
+			return -1;
+		key[i] = (uint8_t)value;
 	}
-
-	while (fgets(buf, sizeof(buf), fp)) {
-
-		if (strlen(buf) <= 1 || buf[0] == '#') {
-			/* Commented/empty line */
-			continue;
-
-		} else if (!strncmp(buf, "network ", 8)) {
-
-			/* Network definition */
-			i = tcdb->num_nets;
-			if (i > 0 && (i % TCDB_ALLOC_BLOCK_SIZE == 0)) {
-				// tcdb->nets = talloc_realloc(NULL, tcdb->nets, struct tetra_netinfo, i + TCDB_ALLOC_BLOCK_SIZE);
-				void* newnets = malloc(sizeof(struct tetra_netinfo)*(i + TCDB_ALLOC_BLOCK_SIZE));
-				memcpy(newnets, tcdb->nets, sizeof(struct tetra_netinfo)*tcdb->nets_cnt);
-				free(tcdb->nets);
-				tcdb->nets = newnets;
-			}
-
-			c = sscanf(buf, "network mcc %d mnc %d ksg_type %d security_class %d\n",
-				&tcdb->nets[i].mcc, &tcdb->nets[i].mnc,
-				(uint32_t *) &tcdb->nets[i].ksg_type,
-				(uint32_t *) &tcdb->nets[i].security_class);
-
-			if (c != 4) {
-				printf("tetra_crypto: Failed to parse network info element %d [%s] (%d)\n", i, buf, c);
-				exit(1);
-			}
-			// printf("tetra_crypto: Loaded MNC [%s]\n", dump_network_info(&tcdb->nets[i]));
-			tcdb->num_nets++;
-
-		} else if (!strncmp(buf, "key ", 4)) {
-
-			/* Key definition */
-			i = tcdb->num_keys;
-			if (i > 0 && (i % TCDB_ALLOC_BLOCK_SIZE == 0)) {
-				// tcdb->keys = talloc_realloc(NULL, tcdb->keys, struct tetra_key, i + TCDB_ALLOC_BLOCK_SIZE);
-				void* newnets = malloc(sizeof(struct tetra_netinfo)*(i + TCDB_ALLOC_BLOCK_SIZE));
-				memcpy(newnets, tcdb->nets, sizeof(struct tetra_netinfo)*tcdb->nets_cnt);
-				free(tcdb->nets);
-				tcdb->nets = newnets;
-			}
-
-			c = sscanf(buf, "key mcc %d mnc %d addr %d key_type %d key_num %d key %02X%02X%02X%02X%02X%02X%02X%02X%02X%02X\n",
-				&tcdb->keys[i].mcc, &tcdb->keys[i].mnc, &tcdb->keys[i].addr,
-				(uint32_t *) &tcdb->keys[i].key_type, &tcdb->keys[i].key_num,
-				(uint32_t *) &tcdb->keys[i].key[0], (uint32_t *) &tcdb->keys[i].key[1],
-				(uint32_t *) &tcdb->keys[i].key[2], (uint32_t *) &tcdb->keys[i].key[3],
-				(uint32_t *) &tcdb->keys[i].key[4], (uint32_t *) &tcdb->keys[i].key[5],
-				(uint32_t *) &tcdb->keys[i].key[6], (uint32_t *) &tcdb->keys[i].key[7],
-				(uint32_t *) &tcdb->keys[i].key[8], (uint32_t *) &tcdb->keys[i].key[9]);
-			tcdb->keys[i].index = i;
-			if (c != 15) {
-				printf("tetra_crypto: Failed to parse key %d [%s] (%d)\n", i, buf, c);
-				exit(1);
-			}
-			// printf("tetra_crypto: Loaded key [%s]\n", dump_key(&tcdb->keys[i]));
-			tcdb->num_keys++;
-
-		} else {
-			printf("tetra_crypto: Could not parse line: %s\n", buf);
-			exit(1);
-		}
-	}
-
-	/* Check network info available for each key and set ptrs for convenience */
-	for (i = 0; i < tcdb->num_keys; i++) {
-		struct tetra_netinfo *network_info_ptr = get_network_info(tcdb->keys[i].mcc, tcdb->keys[i].mnc);
-		if (!network_info_ptr) {
-			printf("tetra_crypto: Required network info is missing for %4d", tcdb->keys[i].mnc);
-			exit(1);
-		}
-		tcdb->keys[i].network_info = network_info_ptr;
-	}
-
-	fclose(fp);
 	return 0;
+}
+
+struct tetra_netinfo *get_network_info(struct tetra_crypto_database *db,
+				       uint32_t mcc, uint32_t mnc)
+{
+	if (!db)
+		return NULL;
+	for (uint32_t i = 0; i < db->num_nets; i++)
+		if (db->nets[i].mcc == mcc && db->nets[i].mnc == mnc)
+			return &db->nets[i];
+	return NULL;
+}
+
+static int link_keys(struct tetra_crypto_database *db, char *error, size_t error_len)
+{
+	for (uint32_t i = 0; i < db->num_keys; i++) {
+		db->keys[i].index = i;
+		db->keys[i].network_info = get_network_info(db, db->keys[i].mcc,
+							      db->keys[i].mnc);
+		if (!db->keys[i].network_info) {
+			set_error(error, error_len, "key %u has no matching network", i + 1);
+			return -1;
+		}
+	}
+	return 0;
+}
+
+int tetra_crypto_db_load(struct tetra_crypto_database *db, const char *filename,
+			 char *error, size_t error_len)
+{
+	struct tetra_crypto_database next;
+	FILE *fp;
+	char buf[1000];
+	unsigned int line = 0;
+
+	if (!db || !filename || !filename[0]) {
+		set_error(error, error_len, "no key-file path supplied");
+		return -1;
+	}
+	tetra_crypto_db_init(&next);
+	fp = fopen(filename, "r");
+	if (!fp) {
+		set_error(error, error_len, "cannot open key file: %s", strerror(errno));
+		return -1;
+	}
+	while (fgets(buf, sizeof(buf), fp)) {
+		char kind[16], hex[64], extra;
+		uint32_t a, b, c, d, e;
+		line++;
+		if (!strchr(buf, '\n') && !feof(fp)) {
+			set_error(error, error_len, "line %u is too long", line);
+			goto fail;
+		}
+		char *cur = buf;
+		while (isspace((unsigned char)*cur)) cur++;
+		if (!*cur || *cur == '#') continue;
+		if (sscanf(cur, "%15s", kind) != 1) continue;
+		if (!strcmp(kind, "network")) {
+			if (sscanf(cur, "network mcc %u mnc %u ksg_type %u security_class %u %c",
+				   &a, &b, &c, &d, &extra) != 4 || !supported_ksg((enum tetra_ksg_type)c) ||
+			    d < NETWORK_CLASS_1 || d > NETWORK_CLASS_3) {
+				set_error(error, error_len, "invalid network definition on line %u", line);
+				goto fail;
+			}
+			if (reserve_array((void **)&next.nets, &next.nets_capacity,
+					  next.num_nets, sizeof(*next.nets))) {
+				set_error(error, error_len, "out of memory on line %u", line);
+				goto fail;
+			}
+			next.nets[next.num_nets++] = (struct tetra_netinfo){a, b, (enum tetra_ksg_type)c,
+									(enum tetra_security_class)d};
+		} else if (!strcmp(kind, "key")) {
+			if (sscanf(cur, "key mcc %u mnc %u addr %u key_type %u key_num %u key %63s %c",
+				   &a, &b, &c, &d, &e, hex, &extra) != 6 || d != KEYTYPE_CCK_SCK) {
+				set_error(error, error_len, "invalid key definition on line %u", line);
+				goto fail;
+			}
+			if (reserve_array((void **)&next.keys, &next.keys_capacity,
+					  next.num_keys, sizeof(*next.keys))) {
+				set_error(error, error_len, "out of memory on line %u", line);
+				goto fail;
+			}
+			struct tetra_key *key = &next.keys[next.num_keys];
+			*key = (struct tetra_key){0};
+			key->mcc = a; key->mnc = b; key->addr = c;
+			key->key_type = (enum tetra_key_type)d; key->key_num = e;
+			if (parse_hex_key(hex, key->key)) {
+				set_error(error, error_len, "key on line %u must contain exactly 20 hex digits", line);
+				goto fail;
+			}
+			next.num_keys++;
+		} else {
+			set_error(error, error_len, "unknown entry on line %u", line);
+			goto fail;
+		}
+	}
+	if (ferror(fp)) {
+		set_error(error, error_len, "error reading key file");
+		goto fail;
+	}
+	if (link_keys(&next, error, error_len)) goto fail;
+	fclose(fp);
+	tetra_crypto_db_clear(db);
+	*db = next;
+	if (error && error_len) error[0] = 0;
+	return 0;
+fail:
+	fclose(fp);
+	tetra_crypto_db_clear(&next);
+	return -1;
+}
+
+int tetra_crypto_db_add_or_replace(struct tetra_crypto_database *db,
+				   const struct tetra_netinfo *network,
+				   const struct tetra_key *key,
+				   char *error, size_t error_len)
+{
+	uint32_t ni, ki;
+	if (!db || !network || !key || !supported_ksg(network->ksg_type) ||
+	    key->key_type != KEYTYPE_CCK_SCK || key->mcc != network->mcc ||
+	    key->mnc != network->mnc) {
+		set_error(error, error_len, "invalid or unsupported network/key candidate");
+		return -1;
+	}
+	for (ni = 0; ni < db->num_nets; ni++)
+		if (db->nets[ni].mcc == network->mcc && db->nets[ni].mnc == network->mnc) break;
+	if (ni == db->num_nets) {
+		if (reserve_array((void **)&db->nets, &db->nets_capacity, ni, sizeof(*db->nets))) goto oom;
+		db->num_nets++;
+	}
+	db->nets[ni] = *network;
+	for (ki = 0; ki < db->num_keys; ki++)
+		if (db->keys[ki].mcc == key->mcc && db->keys[ki].mnc == key->mnc &&
+		    db->keys[ki].key_type == key->key_type && db->keys[ki].key_num == key->key_num &&
+		    db->keys[ki].addr == key->addr) break;
+	if (ki == db->num_keys) {
+		if (reserve_array((void **)&db->keys, &db->keys_capacity, ki, sizeof(*db->keys))) goto oom;
+		db->num_keys++;
+	}
+	db->keys[ki] = *key;
+	return link_keys(db, error, error_len);
+oom:
+	/* A successful network realloc may have moved storage before a later key
+	 * allocation failed. Restore all convenience pointers before returning. */
+	(void)link_keys(db, NULL, 0);
+	set_error(error, error_len, "out of memory adding key candidate");
+	return -1;
 }
 
 struct tetra_key *get_key_by_addr(struct tetra_crypto_state *tcs, uint32_t addr, enum tetra_key_type key_type)
 {
-	for (unsigned int i = 0; i < tcdb->num_keys; i++) {
-		struct tetra_key *key = &tcdb->keys[i];
+	for (unsigned int i = 0; tcs->db && i < tcs->db->num_keys; i++) {
+		struct tetra_key *key = &tcs->db->keys[i];
 		if (key->mnc == tcs->mnc &&
 				key->mcc == tcs->mcc &&
 				key->addr == addr &&
@@ -424,6 +533,7 @@ struct tetra_key *get_key_by_addr(struct tetra_crypto_state *tcs, uint32_t addr,
 
 struct tetra_key *get_ksg_key(struct tetra_crypto_state *tcs, int addr)
 {
+	(void)addr;
 	/* TETRA standard part 7 Clause 6.2:
 	--------------------------------------------
 			Auth	Encr	GCK	DCK
@@ -451,8 +561,8 @@ void update_current_network(struct tetra_crypto_state *tcs, int mcc, int mnc)
 
 	/* Network changed, update reference to current network */
 	tcs->network = 0;
-	for (unsigned int i = 0; i < tcdb->num_nets; i++) {
-		struct tetra_netinfo *network = &tcdb->nets[i];
+	for (unsigned int i = 0; tcs->db && i < tcs->db->num_nets; i++) {
+		struct tetra_netinfo *network = &tcs->db->nets[i];
 		if (network->mnc == tcs->mnc && network->mcc == tcs->mcc) {
 			tcs->network = network;
 			break;
@@ -468,8 +578,8 @@ void update_current_cck(struct tetra_crypto_state *tcs)
 	// printf("\ntetra_crypto: update_current_cck invoked cck %d mcc %d mnc %d\n", tcs->cck_id, tcs->mcc, tcs->mnc);
 	tcs->cck = 0;
 
-	for (unsigned int i = 0; i < tcdb->num_keys; i++) {
-		struct tetra_key *key = &tcdb->keys[i];
+	for (unsigned int i = 0; tcs->db && i < tcs->db->num_keys; i++) {
+		struct tetra_key *key = &tcs->db->keys[i];
 		/* TODO FIXME consider selecting CCK or SCK key type based on network config */
 		if (key->mcc == tcs->mcc && key->mnc == tcs->mnc && key->key_num == tcs->cck_id) {
 			if (key->key_type == KEYTYPE_CCK_SCK) {
@@ -481,11 +591,7 @@ void update_current_cck(struct tetra_crypto_state *tcs)
 	}
 }
 
-struct tetra_netinfo *get_network_info(uint32_t mcc, uint32_t mnc)
+void tetra_crypto_refresh(struct tetra_crypto_state *tcs)
 {
-	for (unsigned int i = 0; i < tcdb->num_nets; i++) {
-		if (tcdb->nets[i].mcc == mcc && tcdb->nets[i].mnc == mnc)
-			return &tcdb->nets[i];
-	}
-	return 0;
+	update_current_network(tcs, tcs->mcc, tcs->mnc);
 }

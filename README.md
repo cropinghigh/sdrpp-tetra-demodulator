@@ -50,4 +50,63 @@ Usage:
 
   4.  If the channel is unencrypted, just wait for the voice activity and listen to it!
 
+Optional encryption/key support
+-------------------------------
+
+The OSMO-TETRA decoder can decrypt traffic for which you supply an authorized
+80-bit CCK/SCK. This integration supports the implementations included in this
+repository: **TEA1, TEA2, and TEA3 only**. TEA4 and the other enum values are
+not supported. DCK, MGCK, GCK, authentication bypass, key recovery, brute force,
+and key searching are not implemented.
+
+Open **Crypto / Encryption** in the module's OSMO-TETRA view, enter a key-file
+path, and select **Load**. **Reload** transactionally replaces a previously
+loaded file and **Clear** unloads all keys. The path and key material are not
+written to `tetra_demodulator_config.json`. An invalid or missing file reports
+an error and leaves the active keystore and clear-TETRA decoder operational.
+
+The text format contains one definition per line; blank lines and lines whose
+first non-space character is `#` are ignored:
+
+```
+network mcc <decimal> mnc <decimal> ksg_type <1|2|3> security_class <1|2|3>
+key mcc <decimal> mnc <decimal> addr <decimal> key_type 1 key_num <decimal> key <20 hex digits>
+```
+
+Every key must have a matching network line. `ksg_type` values 1, 2, and 3
+select TEA1, TEA2, and TEA3 respectively. `key_type 1` is CCK/SCK; other key
+types are rejected because their selection/derivation is not implemented.
+Never publish a real network key in logs, screenshots, bug reports, or test
+files.
+
+Decryption is attempted only for a resource assignment marked encrypted and
+matched to its traffic timeslot/usage marker. The status view reports non-secret
+context and explains common unavailable states, including waiting for SYNC or
+SYSINFO, an unknown network, or a missing key. The main-carrier number currently
+comes from SYSINFO, so decoding away from the main control carrier may not have
+enough metadata for safe keystream generation. No values are guessed.
+
+The decoder owns a per-instance keystore and offers a synchronized
+`addOrReplaceKey` boundary for authorized external key providers and test
+harnesses. Updating the keystore refreshes selection without restarting SDR++;
+no external process execution or key-recovery functionality is included.
+The inherited osmo-tetra PHY timing state is still process-global; simultaneous
+decoder instances therefore retain that pre-existing limitation, although their
+key databases and key updates are isolated from one another.
+
+Only receive and decrypt systems or recordings that you are legally authorized
+to access. Applicable radio, privacy, and cryptography laws vary by jurisdiction.
+
  
+
+Running crypto tests without SDR++
+----------------------------------
+
+The crypto tests have a standalone CMake project and do not alter the plugin's
+normal CMake workflow:
+
+```
+cmake -S tests -B build-tests
+cmake --build build-tests
+ctest --test-dir build-tests --output-on-failure
+```
